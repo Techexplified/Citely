@@ -20,7 +20,15 @@ export async function trackCompetitor(shopId, name) {
 
 export async function upsertCompetitorNames(shopId, names = []) {
   const unique = [
-    ...new Set(names.map((n) => String(n || "").trim()).filter(Boolean)),
+    ...new Set(
+      names
+        .map((n) => String(n || "").trim())
+        .filter(
+          (n) =>
+            n &&
+            !/^(brand|store|example|company|retailer)\s*[a-z0-9_-]*$/i.test(n),
+        ),
+    ),
   ];
 
   for (const name of unique) {

@@ -28,29 +28,83 @@ function storeMatchers(shop) {
   return [...new Set(values)];
 }
 
+function isPlaceholderBrand(name = "") {
+  const value = String(name).trim();
+  if (!value) return true;
+  return /^(brand|store|example|company|retailer)\s*[a-z0-9_-]*$/i.test(value);
+}
+
+function cleanBrandNames(names = []) {
+  return [
+    ...new Set(
+      names
+        .map((name) => String(name || "").trim())
+        .filter((name) => name && !isPlaceholderBrand(name)),
+    ),
+  ].slice(0, 12);
+}
+
 function parseBrandList(content) {
   const cleaned = String(content || "")
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
 
-  try {
-    const parsed = JSON.parse(cleaned);
+  const toName = (item) => {
+    if (typeof item === "string") return item.trim();
+    if (item && typeof item === "object") {
+      return String(
+        item.name || item.brand || item.store || item.title || "",
+      ).trim();
+    }
+    return "";
+  };
+
+  const fromParsed = (parsed) => {
     if (Array.isArray(parsed)) {
-      return parsed.map((item) => String(item).trim()).filter(Boolean);
+      return parsed.map(toName).filter(Boolean);
     }
-    if (Array.isArray(parsed?.brands)) {
-      return parsed.brands.map((item) => String(item).trim()).filter(Boolean);
+    if (!parsed || typeof parsed !== "object") return null;
+    const list =
+      parsed.brands ||
+      parsed.stores ||
+      parsed.recommendations ||
+      parsed.names ||
+      parsed.response;
+    if (Array.isArray(list)) return list.map(toName).filter(Boolean);
+    if (typeof list === "string") {
+      return list
+        .split(/[\n,;]/)
+        .map((part) => part.replace(/^[\d\-*.)\s]+/, "").trim())
+        .filter((part) => part.length > 1 && part.length < 80)
+        .slice(0, 12);
     }
+    return null;
+  };
+
+  try {
+    const direct = fromParsed(JSON.parse(cleaned));
+    if (direct?.length) return cleanBrandNames(direct);
   } catch {
-    // fall through to line parsing
+    // try embedded JSON next
   }
 
-  return cleaned
-    .split(/[\n,]/)
-    .map((part) => part.replace(/^[\d\-*.)\s]+/, "").trim())
-    .filter((part) => part.length > 1 && part.length < 80)
-    .slice(0, 12);
+  const embedded = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+  if (embedded) {
+    try {
+      const nested = fromParsed(JSON.parse(embedded[0]));
+      if (nested?.length) return cleanBrandNames(nested);
+    } catch {
+      // fall through
+    }
+  }
+
+  return cleanBrandNames(
+    cleaned
+      .split(/[\n,]/)
+      .map((part) => part.replace(/^[\d\-*.)\s]+/, "").trim())
+      .filter((part) => part.length > 1 && part.length < 80),
+  );
 }
 
 function mentionedInList(brands, matchers) {
@@ -178,27 +232,37 @@ export async function runShopScan(shop) {
   const missingPromptTexts = [];
 
   try {
+    let completedMentions = 0;
+
     for (const prompt of prompts) {
       let promptMentioned = false;
 
       for (const engine of engineNames) {
         const model = engines[engine];
-        const { content } = await chatCompletion({
-          model,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You recommend online brands for shoppers. Reply with JSON only: {\"brands\":[\"Brand A\",\"Brand B\"]} ordered by how strongly you would recommend them. No markdown.",
-            },
-            {
-              role: "user",
-              content: `Buyer question: ${prompt.text}\nNiche context: ${shop.niche || "general ecommerce"}\nReturn up to 8 brand or store names.`,
-            },
-          ],
-        });
+        let brands = [];
+        let engineError = null;
 
-        const brands = parseBrandList(content);
+        try {
+          const { content } = await chatCompletion({
+            model,
+            messages: [
+              {
+                role: "system",
+                content:
+                  'You recommend real online brands and stores for shoppers. Reply with JSON only: {"brands":["iHerb","Thorne","Amazon"]}. Use actual brand or retailer names only. Never use placeholders like Brand A, Brand B, Store 1, or Example.',
+              },
+              {
+                role: "user",
+                content: `Buyer question: ${prompt.text}\nNiche context: ${shop.niche || "general ecommerce"}\nReturn up to 8 real brand or store names, strongest recommendations first.`,
+              },
+            ],
+          });
+          brands = parseBrandList(content);
+        } catch (error) {
+          engineError = error?.message || "Engine request failed";
+          console.error(`Scan engine failed (${engine}/${model}):`, engineError);
+        }
+
         const mentioned = mentionedInList(brands, matchers);
         if (mentioned) promptMentioned = true;
 
@@ -216,12 +280,20 @@ export async function runShopScan(shop) {
             mentioned,
             rank: rankOfStore(brands, matchers),
             rivalCited: rival,
-            rawExcerpt: brands.slice(0, 8).join(", ").slice(0, 500),
+            rawExcerpt: (brands.slice(0, 8).join(", ") || engineError || "")
+              .slice(0, 500),
           },
         });
+        if (!engineError) completedMentions += 1;
       }
 
       if (!promptMentioned) missingPromptTexts.push(prompt.text);
+    }
+
+    if (!completedMentions) {
+      throw new Error(
+        "AI scan failed. Your OpenRouter account may be out of credits, or the model request was too large.",
+      );
     }
 
     await upsertCompetitorNames(shop.id, rivalNames);

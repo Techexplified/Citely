@@ -34,11 +34,12 @@ import { getThemeEmbedEditorUrl } from "../utils/theme.server";
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop);
-  await ensurePrimaryPrompt(shop);
 
   if (!shop.onboardingDone) {
     return { onboardingDone: false };
   }
+
+  await ensurePrimaryPrompt(shop);
 
   const [prompts, stats] = await Promise.all([
     listActivePrompts(shop.id),

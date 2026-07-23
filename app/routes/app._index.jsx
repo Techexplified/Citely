@@ -45,7 +45,6 @@ function formatWhen(value) {
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const shop = await ensureShop(session.shop);
-  await ensurePrimaryPrompt(shop);
 
   if (!shop.onboardingDone) {
     return {
@@ -58,6 +57,8 @@ export const loader = async ({ request }) => {
       recentOrders: [],
     };
   }
+
+  await ensurePrimaryPrompt(shop);
 
   const [stats, revenue, competitors, latestJob, prompts] = await Promise.all([
     getScanStats(shop.id),

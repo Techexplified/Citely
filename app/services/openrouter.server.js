@@ -2,8 +2,9 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const DEFAULT_ENGINES = {
   ChatGPT: "openai/gpt-4o-mini",
-  Gemini: "google/gemini-2.0-flash-001",
-  Perplexity: "perplexity/sonar",
+  // Temporarily disabled until OpenRouter model access is confirmed:
+  // Gemini: "google/gemini-2.5-flash",
+  // Perplexity: "perplexity/sonar",
 };
 
 export function isOpenRouterConfigured() {
@@ -23,7 +24,12 @@ export function getEngineModels() {
   return { ...DEFAULT_ENGINES };
 }
 
-export async function chatCompletion({ model, messages, temperature = 0.2 }) {
+export async function chatCompletion({
+  model,
+  messages,
+  temperature = 0.2,
+  max_tokens = 256,
+}) {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) {
     throw new Error(
@@ -43,6 +49,7 @@ export async function chatCompletion({ model, messages, temperature = 0.2 }) {
       model,
       messages,
       temperature,
+      max_tokens,
     }),
   });
 

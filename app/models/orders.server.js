@@ -1,5 +1,61 @@
 import prisma from "../db.server";
 
+export async function upsertAiOrder(shopId, data) {
+  return prisma.aiOrder.upsert({
+    where: {
+      shopId_orderId: {
+        shopId,
+        orderId: String(data.orderId),
+      },
+    },
+    create: {
+      shopId,
+      orderId: String(data.orderId),
+      engine: data.engine || null,
+      productTitle: data.productTitle || null,
+      value: Number(data.value) || 0,
+      orderedAt: data.orderedAt ? new Date(data.orderedAt) : new Date(),
+    },
+    update: {
+      engine: data.engine || null,
+      productTitle: data.productTitle || null,
+      value: Number(data.value) || 0,
+      orderedAt: data.orderedAt ? new Date(data.orderedAt) : undefined,
+    },
+  });
+}
+
+export async function recordAiOrderFromShopify(shopId, order) {
+  const attrs = order?.note_attributes || order?.noteAttributes || [];
+  const attrMap = Object.fromEntries(
+    (Array.isArray(attrs) ? attrs : []).map((row) => [
+      String(row?.name || row?.key || "").toLowerCase(),
+      String(row?.value || ""),
+    ]),
+  );
+
+  const engine =
+    attrMap.citely_ai_engine ||
+    attrMap["citely_ai_engine"] ||
+    null;
+  const attributed =
+    String(attrMap.citely_ai_attributed || "").toLowerCase() === "true" ||
+    Boolean(engine);
+
+  if (!attributed) return null;
+
+  const line = order?.line_items?.[0] || order?.lineItems?.[0];
+  const value = Number(order?.total_price ?? order?.totalPrice ?? 0);
+
+  return upsertAiOrder(shopId, {
+    orderId: order?.id || order?.admin_graphql_api_id || crypto.randomUUID(),
+    engine,
+    productTitle: line?.title || line?.name || null,
+    value,
+    orderedAt: order?.created_at || order?.createdAt || new Date(),
+  });
+}
+
 export async function listAiOrders(shopId, { take = 50 } = {}) {
   return prisma.aiOrder.findMany({
     where: { shopId },
