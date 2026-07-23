@@ -1,5 +1,43 @@
 import { useEffect, useMemo, useState } from "react";
-import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+} from "react-router";
+import {
+  Pill,
+  Sparkles,
+  Shirt,
+  House,
+  UtensilsCrossed,
+  PawPrint,
+  Shapes,
+  User,
+  Users,
+  Building2,
+  Globe,
+  ShoppingBag,
+  Home,
+  Gift,
+  Briefcase,
+  Repeat,
+  Wallet,
+  Scale,
+  Gem,
+  Shuffle,
+  Mail,
+  Store,
+  Clipboard,
+  Target,
+  Scan,
+  Rocket,
+  Lightbulb,
+  Zap,
+  Clock3,
+  RefreshCw,
+  Info,
+} from "lucide-react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -13,28 +51,35 @@ const STEPS = [
 ];
 
 const NICHES = [
-  { value: "supplements", label: "Supplements & wellness" },
-  { value: "beauty", label: "Beauty & skincare" },
-  { value: "fashion", label: "Fashion & apparel" },
-  { value: "home", label: "Home & lifestyle" },
-  { value: "food", label: "Food & beverage" },
-  { value: "pets", label: "Pets" },
-  { value: "other", label: "Other niche" },
+  { value: "supplements", label: "Supplements & wellness", icon: Pill },
+  { value: "beauty", label: "Beauty & skincare", icon: Sparkles },
+  { value: "fashion", label: "Fashion & apparel", icon: Shirt },
+  { value: "home", label: "Home & lifestyle", icon: House },
+  { value: "food", label: "Food & beverage", icon: UtensilsCrossed },
+  { value: "pets", label: "Pets", icon: PawPrint },
+  { value: "other", label: "Other niche", icon: Shapes },
 ];
 
-const AUDIENCES = ["Men", "Women", "Businesses", "Everyone"];
-const PURPOSES = [
-  "Personal / everyday use",
-  "Family or household",
-  "Gifts & occasions",
-  "Work / professional",
-  "All kinds of purchases",
+const AUDIENCES = [
+  { value: "Men", icon: User },
+  { value: "Women", icon: Users },
+  { value: "Businesses", icon: Building2 },
+  { value: "Everyone", icon: Globe },
 ];
+
+const PURPOSES = [
+  { value: "Personal / everyday use", icon: ShoppingBag },
+  { value: "Family or household", icon: Home },
+  { value: "Gifts & occasions", icon: Gift },
+  { value: "Work / professional", icon: Briefcase },
+  { value: "All kinds of purchases", icon: Repeat },
+];
+
 const BUDGETS = [
-  "Budget-conscious",
-  "Mid-range",
-  "Premium",
-  "Mixed buyers",
+  { value: "Budget-conscious", icon: Wallet },
+  { value: "Mid-range", icon: Scale },
+  { value: "Premium", icon: Gem },
+  { value: "Mixed buyers", icon: Shuffle },
 ];
 
 function buildPersona({ storeName, audience, purchasePurpose, budget }) {
@@ -141,7 +186,8 @@ export const action = async ({ request }) => {
     const contactEmail = String(formData.get("contactEmail") || "").trim();
 
     const errors = {};
-    if (!contactName) errors.contactName = "Enter your name so reports feel personal.";
+    if (!contactName)
+      errors.contactName = "Enter your name so reports feel personal.";
     if (!niche) errors.niche = "Pick the niche Citely should optimize for.";
     if (!storeName) errors.storeName = "Store name is required.";
 
@@ -163,14 +209,17 @@ export const action = async ({ request }) => {
 
   if (intent === "save_step_2") {
     const audience = String(formData.get("audience") || "").trim();
-    const purchasePurpose = String(formData.get("purchasePurpose") || "").trim();
+    const purchasePurpose = String(
+      formData.get("purchasePurpose") || "",
+    ).trim();
     const budget = String(formData.get("budget") || "").trim();
     const persona = String(formData.get("persona") || "").trim();
     const storeName = existing.storeName || shopDomain;
 
     const errors = {};
     if (!audience) errors.audience = "Select who you mostly sell to.";
-    if (!purchasePurpose) errors.purchasePurpose = "Select why customers usually buy.";
+    if (!purchasePurpose)
+      errors.purchasePurpose = "Select why customers usually buy.";
     if (!budget) errors.budget = "Select a typical budget range.";
     if (!persona) errors.persona = "Add or generate a buyer persona.";
 
@@ -232,63 +281,274 @@ export const action = async ({ request }) => {
     return { ok: true, step: allowed };
   }
 
-  return { ok: false, errors: { form: "Unknown action." }, step: existing.onboardingStep };
+  return {
+    ok: false,
+    errors: { form: "Unknown action." },
+    step: existing.onboardingStep,
+  };
 };
 
-function ProgressRail({ currentStep, maxReached }) {
-  return (
-    <s-stack direction="inline" gap="small" alignItems="center">
-      {STEPS.map((step, index) => {
-        const reached = step.id <= maxReached;
-        const active = step.id === currentStep;
-        const done = step.id < currentStep || (reached && step.id < maxReached && step.id !== currentStep);
+/* ---------- Visual primitives (plain elements — free to theme) ---------- */
 
-        return (
-          <s-stack key={step.id} direction="inline" gap="small" alignItems="center">
-            <s-stack direction="inline" gap="small-200" alignItems="center">
-              <s-badge tone={active ? "info" : done || reached ? "success" : "neutral"}>
-                {done ? "Done" : step.id}
-              </s-badge>
-              <s-text type={active ? "strong" : undefined}>{step.label}</s-text>
-            </s-stack>
-            {index < STEPS.length - 1 ? <s-text color="subdued">/</s-text> : null}
-          </s-stack>
-        );
-      })}
-    </s-stack>
+function OnboardingStyles() {
+  return (
+    <style>{`
+      .co-wrap { --co-teal: #14b8a6; --co-teal-dark: #0d9488; --co-indigo: #6366f1;
+        --co-indigo-dark: #4f46e5; --co-grad: linear-gradient(135deg, var(--co-teal) 0%, var(--co-indigo) 100%);
+        --co-mint: #f0fdfa; --co-border: #e2e5ea; --co-ink: #1f2430; --co-muted: #667085;
+        display: block; }
+
+      .co-hero { border-radius: 16px; padding: 20px 24px; margin-bottom: 4px;
+        background: var(--co-grad); color: #fff; box-shadow: 0 8px 24px -12px rgba(79,70,229,0.45); }
+      .co-hero__badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+        font-weight: 600; letter-spacing: .02em; background: rgba(255,255,255,0.18);
+        padding: 4px 10px; border-radius: 999px; margin-bottom: 8px; }
+      .co-hero__text { margin: 0; font-size: 14px; line-height: 1.5; color: rgba(255,255,255,0.94); max-width: 720px; }
+
+      .co-stepper-card { background: #fff; border: 1px solid var(--co-border); border-radius: 14px;
+        padding: 16px 20px; margin-top: 14px; }
+      .co-stepper { display: flex; align-items: center; }
+      .co-step { display: flex; align-items: center; }
+      .co-step__circle { width: 30px; height: 30px; border-radius: 999px; display: flex; align-items: center;
+        justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; transition: all .2s ease; }
+      .co-step__circle--done { background: var(--co-grad); color: #fff; }
+      .co-step__circle--active { background: #fff; border: 2px solid var(--co-indigo); color: var(--co-indigo); }
+      .co-step__circle--reached { background: #eef2ff; color: var(--co-indigo-dark); border: 1px solid #dfe3fb; }
+      .co-step__circle--upcoming { background: #eef0f3; color: #9aa1ae; }
+      .co-step__label { margin-left: 8px; font-size: 13px; font-weight: 600; color: var(--co-muted); white-space: nowrap; }
+      .co-step__label--active, .co-step__label--done { color: var(--co-ink); }
+      .co-step__line { width: 40px; height: 2px; margin: 0 14px; background: #e2e5ea; border-radius: 2px; }
+      .co-step__line--done { background: var(--co-grad); }
+
+      .co-section-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+      .co-section-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--co-mint);
+        display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+      .co-section-title { font-size: 15px; font-weight: 700; color: var(--co-ink); }
+      .co-section-subtitle { font-size: 13px; color: var(--co-muted); margin-top: 1px; }
+      .co-section-body { margin-top: 14px; }
+
+      .co-chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+      .co-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px;
+        border: 1.5px solid var(--co-border); background: #fff; color: #3f4550; font-size: 13px; font-weight: 600;
+        cursor: pointer; transition: all .15s ease; }
+      .co-chip:hover { border-color: var(--co-teal); background: var(--co-mint); }
+      .co-chip--selected { background: var(--co-grad); border-color: transparent; color: #fff;
+        box-shadow: 0 4px 12px -4px rgba(20,184,166,0.5); }
+      .co-chip--selected:hover { background: var(--co-grad); }
+      .co-chip__icon { font-size: 14px; line-height: 1; }
+      .co-field-label { font-size: 13px; font-weight: 700; color: var(--co-ink); margin-bottom: 2px; }
+      .co-field-hint { font-size: 12px; color: var(--co-muted); margin-bottom: 8px; }
+      .co-error-text { font-size: 12px; color: #d92626; font-weight: 600; margin-top: 6px; }
+
+      .co-persona-card { border: 1.5px solid #d9defc; border-left: 4px solid var(--co-indigo);
+        background: linear-gradient(180deg, #f7f8ff 0%, #ffffff 60%); border-radius: 12px; padding: 16px; }
+      .co-persona-card__head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+      .co-persona-card__title { font-size: 14px; font-weight: 700; color: var(--co-ink); }
+      .co-persona-card__badge { font-size: 11px; font-weight: 700; color: #fff; background: var(--co-grad);
+        padding: 2px 10px; border-radius: 999px; }
+
+      .co-nav-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .co-btn { border: none; border-radius: 10px; padding: 11px 20px; font-size: 14px; font-weight: 700;
+        cursor: pointer; transition: all .15s ease; display: inline-flex; align-items: center; gap: 8px; }
+      .co-btn--primary { background: var(--co-grad); color: #fff; box-shadow: 0 6px 16px -6px rgba(79,70,229,0.5); }
+      .co-btn--primary:hover { filter: brightness(1.05); }
+      .co-btn--primary:disabled { opacity: .65; cursor: default; }
+      .co-btn--ghost { background: transparent; color: var(--co-muted); padding: 11px 16px; }
+      .co-btn--ghost:hover { color: var(--co-ink); }
+
+      .co-embed-card { border: 1px solid var(--co-border); border-radius: 12px; padding: 16px; background: #fff;
+        transition: box-shadow .15s ease; }
+      .co-embed-card:hover { box-shadow: 0 6px 18px -10px rgba(31,36,48,0.25); }
+      .co-embed-card__num { width: 26px; height: 26px; border-radius: 999px; background: var(--co-grad); color: #fff;
+        font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center;
+        margin-right: 8px; flex-shrink: 0; }
+      .co-embed-card__head { display: flex; align-items: center; margin-bottom: 6px; }
+      .co-embed-card__title { font-size: 14px; font-weight: 700; color: var(--co-ink); }
+
+      .co-toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+      .co-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+      .co-toggle__track { width: 40px; height: 22px; border-radius: 999px; background: #d7dbe3; position: relative;
+        transition: background .15s ease; flex-shrink: 0; }
+      .co-toggle__thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 999px;
+        background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform .15s ease; }
+      .co-toggle input:checked + .co-toggle__track { background: var(--co-grad); }
+      .co-toggle input:checked + .co-toggle__track .co-toggle__thumb { transform: translateX(18px); }
+      .co-toggle__label { font-size: 13px; font-weight: 600; color: var(--co-ink); }
+
+      .co-banner { border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5; display: flex; gap: 10px; }
+      .co-banner--info { background: var(--co-mint); color: #0f5c53; border: 1px solid #b6ede4; }
+      .co-banner--soft { background: #f5f6fb; color: #3f4550; border: 1px solid #e4e6f5; }
+    `}</style>
   );
 }
 
-function ChoiceGroup({ name, label, details, options, value, onChange, error }) {
+function CheckIcon() {
   return (
-    <s-stack gap="small">
-      <s-stack gap="none">
-        <s-text type="strong">{label}</s-text>
-        {details ? <s-text color="subdued">{details}</s-text> : null}
-      </s-stack>
-      <s-stack direction="inline" gap="small" wrap>
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path
+        d="M3 8.5L6.2 11.7L13 4.5"
+        stroke="white"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function Stepper({ currentStep, maxReached }) {
+  return (
+    <div className="co-stepper-card">
+      <div className="co-stepper">
+        {STEPS.map((step, index) => {
+          const reached = step.id <= maxReached;
+          const active = step.id === currentStep;
+          const done = step.id < currentStep;
+          const status = done
+            ? "done"
+            : active
+              ? "active"
+              : reached
+                ? "reached"
+                : "upcoming";
+
+          return (
+            <div className="co-step" key={step.id}>
+              <div className={`co-step__circle co-step__circle--${status}`}>
+                {done ? <CheckIcon /> : step.id}
+              </div>
+              <span className={`co-step__label co-step__label--${status}`}>
+                {step.label}
+              </span>
+              {index < STEPS.length - 1 ? (
+                <div
+                  className={`co-step__line ${done ? "co-step__line--done" : ""}`}
+                />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Chip({ icon: Icon, label, selected, onClick }) {
+  return (
+    <button
+      type="button"
+      className={`co-chip ${selected ? "co-chip--selected" : ""}`}
+      onClick={onClick}
+    >
+      {Icon ? (
+        <span className="co-chip__icon">
+          <Icon size={16} strokeWidth={2} />
+        </span>
+      ) : null}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function ChoiceGroup({
+  name,
+  label,
+  details,
+  options,
+  value,
+  onChange,
+  error,
+}) {
+  return (
+    <div>
+      <div className="co-field-label">{label}</div>
+      {details ? <div className="co-field-hint">{details}</div> : null}
+      <div className="co-chip-group">
         {options.map((option) => {
-          const optionValue = typeof option === "string" ? option : option.value;
-          const optionLabel = typeof option === "string" ? option : option.label;
+          const optionValue =
+            typeof option === "string" ? option : option.value;
+          const optionLabel =
+            typeof option === "string" ? option : option.label || option.value;
+          const optionIcon = typeof option === "string" ? null : option.icon;
           const selected = value === optionValue;
 
           return (
-            <s-button
+            <Chip
               key={optionValue}
-              type="button"
-              variant={selected ? "primary" : "secondary"}
+              icon={optionIcon}
+              label={optionLabel}
+              selected={selected}
               onClick={() => onChange(optionValue)}
-            >
-              {optionLabel}
-            </s-button>
+            />
           );
         })}
-      </s-stack>
+      </div>
       <input type="hidden" name={name} value={value} />
-      {error ? <s-banner tone="critical">{error}</s-banner> : null}
-    </s-stack>
+      {error ? <div className="co-error-text">{error}</div> : null}
+    </div>
   );
 }
+
+function SectionCard({ icon: Icon, title, subtitle, children }) {
+  return (
+    <s-section>
+      <div className="co-section-head">
+        {Icon ? (
+          <div className="co-section-icon">
+            <Icon size={20} strokeWidth={2} />
+          </div>
+        ) : null}
+
+        <div>
+          <div className="co-section-title">{title}</div>
+          {subtitle ? (
+            <div className="co-section-subtitle">{subtitle}</div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="co-section-body">{children}</div>
+    </s-section>
+  );
+}
+
+function NavRow({
+  onBack,
+  backLabel = "Back",
+  primaryLabel,
+  submitting,
+  align = "space-between",
+}) {
+  return (
+    <s-section>
+      <div
+        className="co-nav-row"
+        style={align === "end" ? { justifyContent: "flex-end" } : undefined}
+      >
+        {onBack ? (
+          <button
+            type="button"
+            className="co-btn co-btn--ghost"
+            onClick={onBack}
+          >
+            ← {backLabel}
+          </button>
+        ) : (
+          <span />
+        )}
+        <button
+          type="submit"
+          className="co-btn co-btn--primary"
+          disabled={submitting}
+        >
+          {submitting ? "Saving…" : primaryLabel}
+        </button>
+      </div>
+    </s-section>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
 
 export default function Onboarding() {
   const { shop, shopInfo, themeEditorUrl } = useLoaderData();
@@ -303,8 +563,12 @@ export default function Onboarding() {
 
   const [contactName, setContactName] = useState(shop.contactName || "");
   const [niche, setNiche] = useState(shop.niche || "");
-  const [storeName, setStoreName] = useState(shop.storeName || shopInfo.name || "");
-  const [currency, setCurrency] = useState(shop.currency || shopInfo.currency || "");
+  const [storeName, setStoreName] = useState(
+    shop.storeName || shopInfo.name || "",
+  );
+  const [currency, setCurrency] = useState(
+    shop.currency || shopInfo.currency || "",
+  );
   const [audience, setAudience] = useState(shop.audience || "Everyone");
   const [purchasePurpose, setPurchasePurpose] = useState(
     shop.purchasePurpose || "All kinds of purchases",
@@ -322,7 +586,8 @@ export default function Onboarding() {
   const isSubmitting = navigation.state === "submitting";
 
   const promptSuggestions = useMemo(
-    () => buildPromptSuggestions(storeName || shopInfo.name, niche || shop.niche),
+    () =>
+      buildPromptSuggestions(storeName || shopInfo.name, niche || shop.niche),
     [storeName, shopInfo.name, niche, shop.niche],
   );
 
@@ -356,320 +621,414 @@ export default function Onboarding() {
 
   return (
     <s-page heading="Citely setup">
-      <s-section>
-        <s-stack gap="base">
-          <s-text color="subdued">
-            Get to your first AI visibility check fast. Confirm the store, define the
-            buyer, pick the question Citely will track, then turn on storefront
-            injection.
-          </s-text>
-          <ProgressRail currentStep={currentStep} maxReached={maxReached} />
-        </s-stack>
-      </s-section>
+      <OnboardingStyles />
+      <div className="co-wrap">
+        <s-section>
+          <div className="co-hero">
+            <div className="co-hero__badge">
+              <Sparkles size={16} strokeWidth={2} />
+              <span>AI Visibility Setup</span>
+            </div>
 
-      {currentStep === 1 ? (
-        <Form method="post">
-          <input type="hidden" name="intent" value="save_step_1" />
-          <input type="hidden" name="contactEmail" value={shopInfo.email || ""} />
+            <p className="co-hero__text">
+              Get to your first AI visibility check fast. Confirm the store,
+              define the buyer, pick the question Citely will track, then turn
+              on storefront injection.
+            </p>
+          </div>
 
-          <s-section heading="Confirm your store">
-            <s-stack gap="base">
-              <s-banner tone="info">
-                Weekly visibility reports go to {shopInfo.email || "your Shopify account email"}.
-                No need to re-enter it.
-              </s-banner>
+          <Stepper currentStep={currentStep} maxReached={maxReached} />
+        </s-section>
 
-              <s-text-field
-                name="contactName"
-                label="Your name"
-                value={contactName}
-                onChange={(event) => setContactName(event.currentTarget.value)}
-                details="Used to personalize the dashboard and reports."
-                error={errors.contactName}
-                autocomplete="name"
-              />
+        {currentStep === 1 ? (
+          <Form method="post">
+            <input type="hidden" name="intent" value="save_step_1" />
+            <input
+              type="hidden"
+              name="contactEmail"
+              value={shopInfo.email || ""}
+            />
 
-              <ChoiceGroup
-                name="niche"
-                label="Primary niche"
-                details="Citely is niche-first. This shapes prompts, compliance tone, and fix recommendations."
-                options={NICHES}
-                value={niche}
-                onChange={setNiche}
-                error={errors.niche}
-              />
-            </s-stack>
-          </s-section>
+            <SectionCard
+              icon={Store}
+              title="Confirm your store"
+              subtitle="A few basics so reports and prompts feel right for your shop."
+            >
+              <s-stack gap="base">
+                <div className="co-banner co-banner--info">
+                  <Mail size={18} strokeWidth={2} />
+                  <span>
+                    Weekly visibility reports go to{" "}
+                    {shopInfo.email || "your Shopify account email"}. No need to
+                    re-enter it.
+                  </span>
+                </div>
 
-          <s-section heading="Store details from Shopify">
-            <s-stack gap="base">
-              <s-text-field
-                name="storeName"
-                label="Store name"
-                value={storeName}
-                onChange={(event) => setStoreName(event.currentTarget.value)}
-                error={errors.storeName}
-              />
-              <s-text-field
-                name="currency"
-                label="Currency"
-                value={currency}
-                onChange={(event) => setCurrency(event.currentTarget.value)}
-                details={`Detected domain: ${shopInfo.domain}`}
-              />
-              <s-paragraph>
-                These come from your Shopify shop record. Edit only if something looks wrong.
-              </s-paragraph>
-            </s-stack>
-          </s-section>
-
-          <s-section>
-            <s-stack direction="inline" gap="base" justifyContent="end">
-              <s-button type="submit" variant="primary" {...(isSubmitting ? { loading: true } : {})}>
-                Continue to buyer persona
-              </s-button>
-            </s-stack>
-          </s-section>
-        </Form>
-      ) : null}
-
-      {currentStep === 2 ? (
-        <Form method="post">
-          <input type="hidden" name="intent" value="save_step_2" />
-
-          <s-section heading="Build your buyer persona">
-            <s-stack gap="large">
-              <s-paragraph>
-                This is the difference maker. Citely turns your buyer into the real
-                questions they ask AI, then tracks mention rate across engines.
-              </s-paragraph>
-
-              <ChoiceGroup
-                name="audience"
-                label="Primary audience"
-                details="Who you mostly sell to"
-                options={AUDIENCES}
-                value={audience}
-                onChange={(value) => {
-                  setAudience(value);
-                  if (!personaEdited) {
-                    setPersona(
-                      buildPersona({
-                        storeName: storeName || shopInfo.name,
-                        audience: value,
-                        purchasePurpose,
-                        budget,
-                      }),
-                    );
+                <s-text-field
+                  name="contactName"
+                  label="Your name"
+                  value={contactName}
+                  onChange={(event) =>
+                    setContactName(event.currentTarget.value)
                   }
-                }}
-                error={errors.audience}
-              />
-
-              <ChoiceGroup
-                name="purchasePurpose"
-                label="Purchase purpose"
-                details="What they usually buy for"
-                options={PURPOSES}
-                value={purchasePurpose}
-                onChange={(value) => {
-                  setPurchasePurpose(value);
-                  if (!personaEdited) {
-                    setPersona(
-                      buildPersona({
-                        storeName: storeName || shopInfo.name,
-                        audience,
-                        purchasePurpose: value,
-                        budget,
-                      }),
-                    );
-                  }
-                }}
-                error={errors.purchasePurpose}
-              />
-
-              <ChoiceGroup
-                name="budget"
-                label="Typical budget"
-                details="How your buyers tend to spend"
-                options={BUDGETS}
-                value={budget}
-                onChange={(value) => {
-                  setBudget(value);
-                  if (!personaEdited) {
-                    setPersona(
-                      buildPersona({
-                        storeName: storeName || shopInfo.name,
-                        audience,
-                        purchasePurpose,
-                        budget: value,
-                      }),
-                    );
-                  }
-                }}
-                error={errors.budget}
-              />
-
-              <s-stack gap="small">
-                <s-stack direction="inline" gap="small" alignItems="center">
-                  <s-text type="strong">Buyer persona</s-text>
-                  <s-badge>Generated</s-badge>
-                </s-stack>
-                <s-text-area
-                  name="persona"
-                  label="Persona summary"
-                  value={persona}
-                  onChange={(event) => {
-                    setPersona(event.currentTarget.value);
-                    setPersonaEdited(true);
-                  }}
-                  rows={5}
-                  error={errors.persona}
+                  details="Used to personalize the dashboard and reports."
+                  error={errors.contactName}
+                  autocomplete="name"
                 />
-                <s-stack direction="inline" gap="small">
-                  <s-button type="button" variant="secondary" onClick={regeneratePersona}>
-                    Regenerate persona
-                  </s-button>
-                </s-stack>
+
+                <ChoiceGroup
+                  name="niche"
+                  label="Primary niche"
+                  details="Citely is niche-first. This shapes prompts, compliance tone, and fix recommendations."
+                  options={NICHES}
+                  value={niche}
+                  onChange={setNiche}
+                  error={errors.niche}
+                />
               </s-stack>
-            </s-stack>
-          </s-section>
+            </SectionCard>
 
-          <s-section>
-            <s-stack direction="inline" gap="base" justifyContent="space-between">
-              <s-button type="button" variant="tertiary" onClick={() => setCurrentStep(1)}>
-                Back
-              </s-button>
-              <s-button type="submit" variant="primary" {...(isSubmitting ? { loading: true } : {})}>
-                Continue to first scan
-              </s-button>
-            </s-stack>
-          </s-section>
-        </Form>
-      ) : null}
-
-      {currentStep === 3 ? (
-        <Form method="post">
-          <input type="hidden" name="intent" value="save_step_3" />
-
-          <s-section heading="Set your first AI visibility scan">
-            <s-stack gap="base">
-              <s-paragraph>
-                Citely will ask ChatGPT, Perplexity, Gemini, and other engines this
-                buying question on a schedule. We report mention frequency over many
-                runs, never a one-shot yes or no.
-              </s-paragraph>
-
-              <s-text-area
-                name="primaryPrompt"
-                label="Primary buying question"
-                value={primaryPrompt}
-                onChange={(event) => setPrimaryPrompt(event.currentTarget.value)}
-                rows={3}
-                error={errors.primaryPrompt}
-                details="Write it the way a real shopper would ask an AI assistant."
-              />
-
-              <s-stack gap="small">
-                <s-text type="strong">Quick starters</s-text>
-                <s-stack gap="small">
-                  {promptSuggestions.map((suggestion) => (
-                    <s-button
-                      key={suggestion}
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setPrimaryPrompt(suggestion)}
-                    >
-                      {suggestion}
-                    </s-button>
-                  ))}
-                </s-stack>
+            <SectionCard
+              icon={Clipboard}
+              title="Store details from Shopify"
+              subtitle="Pulled from your Shopify shop record."
+            >
+              <s-stack gap="base">
+                <s-text-field
+                  name="storeName"
+                  label="Store name"
+                  value={storeName}
+                  onChange={(event) => setStoreName(event.currentTarget.value)}
+                  error={errors.storeName}
+                />
+                <s-text-field
+                  name="currency"
+                  label="Currency"
+                  value={currency}
+                  onChange={(event) => setCurrency(event.currentTarget.value)}
+                  details={`Detected domain: ${shopInfo.domain}`}
+                />
+                <div className="co-banner co-banner--soft">
+                  <Info size={18} strokeWidth={2} />
+                  <span>
+                    These come from your Shopify shop record. Edit only if
+                    something looks wrong.
+                  </span>
+                </div>
               </s-stack>
+            </SectionCard>
 
-              <s-banner tone="info">
-                Your first scan is queued after this step. Results improve as Citely
-                collects more runs, then we suggest schema, llms.txt, and content fixes.
-              </s-banner>
-            </s-stack>
-          </s-section>
+            <NavRow
+              primaryLabel="Continue to buyer persona"
+              submitting={isSubmitting}
+              align="end"
+            />
+          </Form>
+        ) : null}
 
-          <s-section>
-            <s-stack direction="inline" gap="base" justifyContent="space-between">
-              <s-button type="button" variant="tertiary" onClick={() => setCurrentStep(2)}>
-                Back
-              </s-button>
-              <s-button type="submit" variant="primary" {...(isSubmitting ? { loading: true } : {})}>
-                Queue first scan
-              </s-button>
-            </s-stack>
-          </s-section>
-        </Form>
-      ) : null}
+        {currentStep === 2 ? (
+          <Form method="post">
+            <input type="hidden" name="intent" value="save_step_2" />
 
-      {currentStep === 4 ? (
-        <Form method="post">
-          <input type="hidden" name="intent" value="complete_onboarding" />
-          <input
-            type="hidden"
-            name="themeEmbedActive"
-            value={embedConfirmed ? "true" : "false"}
-          />
-
-          <s-section heading="Turn Citely on for your storefront">
-            <s-stack gap="large">
-              <s-paragraph>
-                Enable the Citely app embed so we can inject AI-readable product schema
-                and help publish discovery files. This is what lets Check turn into Fix.
-              </s-paragraph>
-
-              <s-box padding="base" border="base" borderRadius="base">
-                <s-stack gap="base">
-                  <s-text type="strong">1. Open the theme editor</s-text>
-                  <s-paragraph>
-                    Go to App embeds, toggle on Citely schema injection, then save.
-                  </s-paragraph>
-                  <s-button href={themeEditorUrl} target="_top" variant="primary">
-                    Open theme editor
-                  </s-button>
-                </s-stack>
-              </s-box>
-
-              <s-box padding="base" border="base" borderRadius="base">
-                <s-stack gap="base">
-                  <s-text type="strong">2. Confirm the embed</s-text>
-                  <s-paragraph>
-                    After you save in the theme editor, confirm here so Citely can start
-                    the fix loop. You can finish now and enable the embed later.
-                  </s-paragraph>
-                  <s-checkbox
-                    label="I enabled the Citely app embed"
-                    checked={embedConfirmed}
-                    onChange={(event) =>
-                      setEmbedConfirmed(Boolean(event.currentTarget.checked))
+            <SectionCard
+              icon={Target}
+              title="Build your buyer persona"
+              subtitle="This is the difference maker. Citely turns your buyer into the real questions they ask AI, then tracks mention rate across engines."
+            >
+              <s-stack gap="large">
+                <ChoiceGroup
+                  name="audience"
+                  label="Primary audience"
+                  details="Who you mostly sell to"
+                  options={AUDIENCES}
+                  value={audience}
+                  onChange={(value) => {
+                    setAudience(value);
+                    if (!personaEdited) {
+                      setPersona(
+                        buildPersona({
+                          storeName: storeName || shopInfo.name,
+                          audience: value,
+                          purchasePurpose,
+                          budget,
+                        }),
+                      );
                     }
+                  }}
+                  error={errors.audience}
+                />
+
+                <ChoiceGroup
+                  name="purchasePurpose"
+                  label="Purchase purpose"
+                  details="What they usually buy for"
+                  options={PURPOSES}
+                  value={purchasePurpose}
+                  onChange={(value) => {
+                    setPurchasePurpose(value);
+                    if (!personaEdited) {
+                      setPersona(
+                        buildPersona({
+                          storeName: storeName || shopInfo.name,
+                          audience,
+                          purchasePurpose: value,
+                          budget,
+                        }),
+                      );
+                    }
+                  }}
+                  error={errors.purchasePurpose}
+                />
+
+                <ChoiceGroup
+                  name="budget"
+                  label="Typical budget"
+                  details="How your buyers tend to spend"
+                  options={BUDGETS}
+                  value={budget}
+                  onChange={(value) => {
+                    setBudget(value);
+                    if (!personaEdited) {
+                      setPersona(
+                        buildPersona({
+                          storeName: storeName || shopInfo.name,
+                          audience,
+                          purchasePurpose,
+                          budget: value,
+                        }),
+                      );
+                    }
+                  }}
+                  error={errors.budget}
+                />
+
+                <div className="co-persona-card">
+                  <div className="co-persona-card__head">
+                    <span className="co-persona-card__title">
+                      Buyer persona
+                    </span>
+                    <span className="co-persona-card__badge">Generated</span>
+                  </div>
+                  <s-text-area
+                    name="persona"
+                    label="Persona summary"
+                    labelAccessibilityVisibility="exclusive"
+                    value={persona}
+                    onChange={(event) => {
+                      setPersona(event.currentTarget.value);
+                      setPersonaEdited(true);
+                    }}
+                    rows={5}
+                    error={errors.persona}
                   />
-                </s-stack>
-              </s-box>
+                  <div style={{ marginTop: "10px" }}>
+                    <button
+                      type="button"
+                      className="co-btn co-btn--ghost"
+                      onClick={regeneratePersona}
+                      style={{
+                        padding: "8px 12px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <RefreshCw size={16} strokeWidth={2} />
+                      <span>Regenerate persona</span>
+                    </button>
+                  </div>
+                </div>
+              </s-stack>
+            </SectionCard>
 
-              <s-banner>
-                Citely never promises rankings. You get clearer mention data, practical
-                fixes, and AI-attributed revenue tracking as a floor, not an exact science.
-              </s-banner>
-            </s-stack>
-          </s-section>
+            <NavRow
+              onBack={() => setCurrentStep(1)}
+              primaryLabel="Continue to first scan"
+              submitting={isSubmitting}
+            />
+          </Form>
+        ) : null}
 
-          <s-section>
-            <s-stack direction="inline" gap="base" justifyContent="space-between">
-              <s-button type="button" variant="tertiary" onClick={() => setCurrentStep(3)}>
-                Back
-              </s-button>
-              <s-button type="submit" variant="primary" {...(isSubmitting ? { loading: true } : {})}>
-                {embedConfirmed ? "Finish setup" : "Finish and enable embed later"}
-              </s-button>
-            </s-stack>
-          </s-section>
-        </Form>
-      ) : null}
+        {currentStep === 3 ? (
+          <Form method="post">
+            <input type="hidden" name="intent" value="save_step_3" />
+
+            <SectionCard
+              icon={Scan}
+              title="Set your first AI visibility scan"
+              subtitle="Citely asks ChatGPT, Perplexity, Gemini and others this question on a schedule and reports mention frequency over many runs — never a one-shot yes or no."
+            >
+              <s-stack gap="base">
+                <s-text-area
+                  name="primaryPrompt"
+                  label="Primary buying question"
+                  value={primaryPrompt}
+                  onChange={(event) =>
+                    setPrimaryPrompt(event.currentTarget.value)
+                  }
+                  rows={3}
+                  error={errors.primaryPrompt}
+                  details="Write it the way a real shopper would ask an AI assistant."
+                />
+
+                <div>
+                  <div
+                    className="co-field-label"
+                    style={{
+                      marginBottom: "8px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <Zap size={16} strokeWidth={2} />
+                    <span>Quick starters</span>
+                  </div>
+
+                  <s-stack gap="small-200">
+                    {promptSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="co-chip"
+                        style={{
+                          borderRadius: "10px",
+                          justifyContent: "flex-start",
+                          textAlign: "left",
+                        }}
+                        onClick={() => setPrimaryPrompt(suggestion)}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </s-stack>
+                </div>
+
+                <div className="co-banner co-banner--info">
+                  <Clock3 size={18} strokeWidth={2} />
+                  <span>
+                    Your first scan is queued after this step. Results improve
+                    as Citely collects more runs, then we suggest schema,
+                    llms.txt, and content fixes.
+                  </span>
+                </div>
+              </s-stack>
+            </SectionCard>
+
+            <NavRow
+              onBack={() => setCurrentStep(2)}
+              primaryLabel="Queue first scan"
+              submitting={isSubmitting}
+            />
+          </Form>
+        ) : null}
+
+        {currentStep === 4 ? (
+          <Form method="post">
+            <input type="hidden" name="intent" value="complete_onboarding" />
+            <input
+              type="hidden"
+              name="themeEmbedActive"
+              value={embedConfirmed ? "true" : "false"}
+            />
+
+            <SectionCard
+              icon={Rocket}
+              title="Turn Citely on for your storefront"
+              subtitle="Enable the Citely app embed so we can inject AI-readable product schema and help publish discovery files. This is what lets Check turn into Fix."
+            >
+              <s-stack gap="large">
+                <div className="co-embed-card">
+                  <div className="co-embed-card__head">
+                    <span className="co-embed-card__num">1</span>
+                    <span className="co-embed-card__title">
+                      Open the theme editor
+                    </span>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#667085",
+                      margin: "0 0 12px 34px",
+                    }}
+                  >
+                    Go to App embeds, toggle on Citely schema injection, then
+                    save.
+                  </p>
+                  <div style={{ marginLeft: "34px" }}>
+                    <a
+                      href={themeEditorUrl}
+                      target="_top"
+                      className="co-btn co-btn--primary"
+                      style={{ textDecoration: "none" }}
+                    >
+                      Open theme editor →
+                    </a>
+                  </div>
+                </div>
+
+                <div className="co-embed-card">
+                  <div className="co-embed-card__head">
+                    <span className="co-embed-card__num">2</span>
+                    <span className="co-embed-card__title">
+                      Confirm the embed
+                    </span>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#667085",
+                      margin: "0 0 12px 34px",
+                    }}
+                  >
+                    After you save in the theme editor, confirm here so Citely
+                    can start the fix loop. You can finish now and enable the
+                    embed later.
+                  </p>
+                  <div style={{ marginLeft: "34px" }}>
+                    <label className="co-toggle">
+                      <input
+                        type="checkbox"
+                        checked={embedConfirmed}
+                        onChange={(event) =>
+                          setEmbedConfirmed(
+                            Boolean(event.currentTarget.checked),
+                          )
+                        }
+                      />
+                      <span className="co-toggle__track">
+                        <span className="co-toggle__thumb" />
+                      </span>
+                      <span className="co-toggle__label">
+                        I enabled the Citely app embed
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="co-banner co-banner--soft">
+                  <Lightbulb size={18} strokeWidth={2} />
+                  <span>
+                    Citely never promises rankings. You get clearer mention
+                    data, practical fixes, and AI-attributed revenue tracking as
+                    a floor, not an exact science.
+                  </span>
+                </div>
+              </s-stack>
+            </SectionCard>
+
+            <NavRow
+              onBack={() => setCurrentStep(3)}
+              primaryLabel={
+                embedConfirmed
+                  ? "Finish setup"
+                  : "Finish and enable embed later"
+              }
+              submitting={isSubmitting}
+            />
+          </Form>
+        ) : null}
+      </div>
     </s-page>
   );
 }
