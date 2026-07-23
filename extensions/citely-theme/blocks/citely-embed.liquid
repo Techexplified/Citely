@@ -1,0 +1,97 @@
+{% comment %}
+  Citely app embed: AI-readable product schema + AI referrer attribution stub.
+  Merchants enable this under Theme settings > App embeds.
+{% endcomment %}
+
+{% if block.settings.enable_product_schema and request.page_type == 'product' and product %}
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      "name": {{ product.title | json }},
+      "description": {{ product.description | strip_html | truncate: 5000 | json }},
+      "sku": {{ product.selected_or_first_available_variant.sku | json }},
+      "brand": {
+        "@type": "Brand",
+        "name": {{ shop.name | json }}
+      },
+      "offers": {
+        "@type": "Offer",
+        "priceCurrency": {{ cart.currency.iso_code | json }},
+        "price": {{ product.selected_or_first_available_variant.price | divided_by: 100.0 | json }},
+        "availability": "{% if product.available %}https://schema.org/InStock{% else %}https://schema.org/OutOfStock{% endif %}",
+        "url": {{ shop.url | append: product.url | json }}
+      }
+      {% if product.featured_image %}
+      ,"image": {{ product.featured_image | image_url: width: 1200 | prepend: "https:" | json }}
+      {% endif %}
+    }
+  </script>
+{% endif %}
+
+{% if block.settings.enable_faq_schema and request.page_type == 'product' and product.metafields.custom.faq.value %}
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {% for item in product.metafields.custom.faq.value %}
+          {
+            "@type": "Question",
+            "name": {{ item.question | json }},
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": {{ item.answer | json }}
+            }
+          }{% unless forloop.last %},{% endunless %}
+        {% endfor %}
+      ]
+    }
+  </script>
+{% endif %}
+
+{% if block.settings.enable_attribution %}
+  <script
+    src="{{ 'citely-attribution.js' | asset_url }}"
+    defer
+    data-citely-shop="{{ shop.permanent_domain | escape }}"
+  ></script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "AI schema & tracking",
+  "target": "head",
+  "stylesheet": "citely-embed.css",
+  "settings": [
+    {
+      "type": "header",
+      "content": "AI readability"
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_product_schema",
+      "label": "Inject Product JSON-LD on product pages",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_faq_schema",
+      "label": "Inject FAQ JSON-LD when product FAQ metafield exists",
+      "default": true,
+      "info": "Looks for product.metafields.custom.faq"
+    },
+    {
+      "type": "header",
+      "content": "AI attribution"
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_attribution",
+      "label": "Stamp AI referrer on cart for order tracking",
+      "default": true,
+      "info": "Detects ChatGPT, Perplexity, Gemini and similar referrers, then stores a cart attribute for Citely revenue tracking."
+    }
+  ]
+}
+{% endschema %}

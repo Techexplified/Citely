@@ -31,3 +31,25 @@ export async function ensureShop(shopDomain, defaults = {}) {
     throw error;
   }
 }
+
+export async function ensurePrimaryPrompt(shop) {
+  if (!shop?.id) return null;
+
+  const existing = await prisma.trackedPrompt.findFirst({
+    where: { shopId: shop.id, active: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (existing) return existing;
+
+  const text = shop.primaryPrompt?.trim();
+  if (!text) return null;
+
+  return prisma.trackedPrompt.create({
+    data: {
+      shopId: shop.id,
+      text,
+      source: "onboarding",
+      active: true,
+    },
+  });
+}

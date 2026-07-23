@@ -1,0 +1,10 @@
+{
+  "name": "AI schema & tracking",
+  "settings": {
+    "enable_product_schema": "Inject Product JSON-LD on product pages",
+    "enable_faq_schema": "Inject FAQ JSON-LD when product FAQ metafield exists",
+    "enable_faq_schema_info": "Looks for product.metafields.custom.faq",
+    "enable_attribution": "Stamp AI referrer on cart for order tracking",
+    "enable_attribution_info": "Detects ChatGPT, Perplexity, Gemini and similar referrers, then stores a cart attribute for Citely revenue tracking."
+  }
+}

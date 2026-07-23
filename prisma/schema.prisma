@@ -49,4 +49,105 @@ model Shop {
   themeEmbedActive Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  prompts     TrackedPrompt[]
+  scanJobs    ScanJob[]
+  competitors Competitor[]
+  aiOrders    AiOrder[]
+  fixes       FixItem[]
+}
+
+model TrackedPrompt {
+  id        String   @id @default(cuid())
+  shopId    String
+  text      String
+  source    String   @default("manual")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shop     Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  mentions ScanMention[]
+
+  @@index([shopId, active])
+}
+
+model ScanJob {
+  id         String    @id @default(cuid())
+  shopId     String
+  status     String    @default("queued")
+  startedAt  DateTime?
+  finishedAt DateTime?
+  error      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  shop     Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  mentions ScanMention[]
+
+  @@index([shopId, createdAt])
+}
+
+model ScanMention {
+  id         String  @id @default(cuid())
+  scanJobId  String
+  promptId   String
+  engine     String
+  mentioned  Boolean @default(false)
+  rank       Int?
+  rivalCited String?
+  rawExcerpt String?
+
+  scanJob ScanJob      @relation(fields: [scanJobId], references: [id], onDelete: Cascade)
+  prompt  TrackedPrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@index([scanJobId])
+  @@index([promptId])
+}
+
+model Competitor {
+  id        String   @id @default(cuid())
+  shopId    String
+  name      String
+  tracked   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, name])
+  @@index([shopId])
+}
+
+model AiOrder {
+  id           String   @id @default(cuid())
+  shopId       String
+  orderId      String
+  engine       String?
+  productTitle String?
+  value        Float    @default(0)
+  orderedAt    DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, orderId])
+  @@index([shopId, orderedAt])
+}
+
+model FixItem {
+  id        String   @id @default(cuid())
+  shopId    String
+  key       String
+  title     String
+  impact    String   @default("med")
+  status    String   @default("todo")
+  meta      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, key])
+  @@index([shopId, status])
 }

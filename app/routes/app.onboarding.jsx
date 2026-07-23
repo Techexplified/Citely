@@ -41,7 +41,12 @@ import {
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { ensureShop, upsertShopProfile } from "../models/shop.server";
+import {
+  ensurePrimaryPrompt,
+  ensureShop,
+  upsertShopProfile,
+} from "../models/shop.server";
+import { getThemeEmbedEditorUrl } from "../utils/theme.server";
 
 const STEPS = [
   { id: 1, label: "Store" },
@@ -118,11 +123,6 @@ function buildPromptSuggestions(storeName, niche) {
   ];
 }
 
-function getThemeEditorUrl(shopDomain) {
-  const handle = shopDomain.replace(".myshopify.com", "");
-  return `https://admin.shopify.com/store/${handle}/themes/current/editor?context=apps`;
-}
-
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const shopDomain = session.shop;
@@ -166,7 +166,7 @@ export const loader = async ({ request }) => {
       storefrontUrl: shopData?.primaryDomain?.url || "",
       myshopifyDomain: shopData?.myshopifyDomain || shopDomain,
     },
-    themeEditorUrl: getThemeEditorUrl(shopDomain),
+    themeEditorUrl: getThemeEmbedEditorUrl(shopDomain),
   };
 };
 
@@ -255,10 +255,11 @@ export const action = async ({ request }) => {
       return { ok: false, errors, step: 3 };
     }
 
-    await upsertShopProfile(shopDomain, {
+    const shopAfterPrompt = await upsertShopProfile(shopDomain, {
       primaryPrompt,
       onboardingStep: Math.max(existing.onboardingStep, 4),
     });
+    await ensurePrimaryPrompt(shopAfterPrompt);
 
     return { ok: true, step: 4, scanQueued: true };
   }
@@ -266,11 +267,12 @@ export const action = async ({ request }) => {
   if (intent === "complete_onboarding") {
     const themeEmbedActive = formData.get("themeEmbedActive") === "true";
 
-    await upsertShopProfile(shopDomain, {
+    const shopAfterComplete = await upsertShopProfile(shopDomain, {
       themeEmbedActive,
       onboardingStep: 4,
       onboardingDone: true,
     });
+    await ensurePrimaryPrompt(shopAfterComplete);
 
     return redirect("/app");
   }
@@ -908,8 +910,8 @@ export default function Onboarding() {
                   <Clock3 size={18} strokeWidth={2} />
                   <span>
                     Your first scan is queued after this step. Results improve
-                    as Citely collects more runs, then we suggest schema,
-                    llms.txt, and content fixes.
+                    as Citely collects more runs, then we suggest store and
+                    content fixes.
                   </span>
                 </div>
               </s-stack>

@@ -22,8 +22,9 @@ FIX LOOP: dashboard insights -> schema / llms.txt / rewrites on store -> re-scan
 React Router Shopify app template, Polaris + App Bridge, Shopify GraphQL Admin API + webhooks.
 Hosted Postgres (Neon preferred over template SQLite for Vercel).
 Vercel for admin + webhooks. Long AI scan jobs need queue/worker (not raw Vercel function limits).
-Theme App Extension for JSON-LD / FAQ injection. App Proxy for store-domain llms.txt.
+Theme App Extension (`extensions/citely-theme`) app embed for JSON-LD / FAQ injection and AI referrer cart stamping. App Proxy for store-domain llms.txt.
 AI attribution: pixel + cart attributes + orders/create; treat attribution as a floor not exact.
+OpenRouter via OPENROUTER_API_KEY in .env for multi-engine scans (ChatGPT, Gemini, Perplexity). Optional OPENROUTER_MODELS JSON override.
 
 ## Hard constraints
 
