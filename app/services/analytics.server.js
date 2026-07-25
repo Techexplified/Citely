@@ -45,7 +45,8 @@ export function buildCompetitorStandings(shop, mentions, competitors) {
     if (mention.mentioned) bump(shop.storeName || "You", true);
     if (mention.rivalCited) bump(mention.rivalCited, false);
     if (mention.rawExcerpt) {
-      mention.rawExcerpt.split(",").forEach((part) => {
+      const brandPart = String(mention.rawExcerpt).split("||")[0] || "";
+      brandPart.split(",").forEach((part) => {
         const name = part.trim();
         if (!name) return;
         const isYou =

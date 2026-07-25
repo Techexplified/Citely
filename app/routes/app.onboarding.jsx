@@ -47,7 +47,12 @@ import {
   upsertShopProfile,
 } from "../models/shop.server";
 import { runShopScan } from "../services/scan.server";
+import {
+  listAvailableEngines,
+  parseEnginesFromFormData,
+} from "../services/engines.server";
 import { getThemeEmbedEditorUrl } from "../utils/theme.server";
+import { EngineSelect } from "../components/citely-ui";
 
 const STEPS = [
   { id: 1, label: "Store" },
@@ -168,6 +173,11 @@ export const loader = async ({ request }) => {
       myshopifyDomain: shopData?.myshopifyDomain || shopDomain,
     },
     themeEditorUrl: getThemeEmbedEditorUrl(shopDomain),
+    engines: listAvailableEngines().map(({ id, label, available }) => ({
+      id,
+      label,
+      available,
+    })),
   };
 };
 
@@ -246,10 +256,14 @@ export const action = async ({ request }) => {
 
   if (intent === "save_step_3") {
     const primaryPrompt = String(formData.get("primaryPrompt") || "").trim();
+    const selectedEngines = parseEnginesFromFormData(formData);
     const errors = {};
     if (primaryPrompt.length < 12) {
       errors.primaryPrompt =
         "Write a real buying question customers would ask an AI.";
+    }
+    if (!selectedEngines.length) {
+      errors.engines = "Select at least one AI engine to scan.";
     }
 
     if (Object.keys(errors).length) {
@@ -262,7 +276,9 @@ export const action = async ({ request }) => {
     });
     await ensurePrimaryPrompt(shopAfterPrompt);
 
-    const scan = await runShopScan(shopAfterPrompt);
+    const scan = await runShopScan(shopAfterPrompt, {
+      engines: selectedEngines,
+    });
 
     return {
       ok: true,
@@ -656,7 +672,7 @@ function NavRow({
 /* ---------------------------------------------------------------------- */
 
 export default function Onboarding() {
-  const { shop, shopInfo, themeEditorUrl } = useLoaderData();
+  const { shop, shopInfo, themeEditorUrl, engines = [] } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const shopify = useAppBridge();
@@ -684,6 +700,9 @@ export default function Onboarding() {
   const [primaryPrompt, setPrimaryPrompt] = useState(
     shop.primaryPrompt ||
       buildPromptSuggestions(shop.storeName || shopInfo.name, shop.niche)[0],
+  );
+  const [selectedEngines, setSelectedEngines] = useState(() =>
+    engines.map((engine) => engine.id),
   );
   const [embedConfirmed, setEmbedConfirmed] = useState(shop.themeEmbedActive);
 
@@ -963,7 +982,7 @@ export default function Onboarding() {
             <SectionCard
               icon={Scan}
               title="Set your first AI visibility scan"
-              subtitle="Citely asks ChatGPT, Perplexity, Gemini and others this question on a schedule and reports mention frequency over many runs — never a one-shot yes or no."
+              subtitle="Pick which AI engines to check, then Citely asks your buying question and reports mention frequency over many runs — never a one-shot yes or no."
             >
               <s-stack gap="base">
                 <s-text-area
@@ -977,6 +996,26 @@ export default function Onboarding() {
                   error={errors.primaryPrompt}
                   details="Write it the way a real shopper would ask an AI assistant."
                 />
+
+                <div>
+                  <EngineSelect
+                    engines={engines}
+                    selected={selectedEngines}
+                    onChange={setSelectedEngines}
+                    label="Engines to check"
+                  />
+                  {errors.engines ? (
+                    <p
+                      style={{
+                        marginTop: 8,
+                        color: "#b91c1c",
+                        fontSize: 13,
+                      }}
+                    >
+                      {errors.engines}
+                    </p>
+                  ) : null}
+                </div>
 
                 <div>
                   <div

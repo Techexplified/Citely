@@ -12,6 +12,7 @@ import {
   Button,
   CyPage,
   EngineMeter,
+  EngineSelect,
   FilterPills,
   InfoNote,
   PageHeader,
@@ -25,8 +26,27 @@ import {
   listActivePrompts,
 } from "../models/prompt.server";
 import { buildVisibilityRows } from "../services/analytics.server";
+import {
+  listAvailableEngines,
+  parseEnginesFromFormData,
+} from "../services/engines.server";
 import { getScanStats, runShopScan } from "../services/scan.server";
 import { authenticate } from "../shopify.server";
+
+function splitExcerpt(rawExcerpt = "") {
+  const text = String(rawExcerpt || "");
+  const [brandPart, ...rest] = text.split("||");
+  const brands = (brandPart || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const sources = rest
+    .join("||")
+    .split("·")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return { brands, sources };
+}
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -43,11 +63,18 @@ export const loader = async ({ request }) => {
     getScanStats(shop.id),
   ]);
 
+  const engines = listAvailableEngines().map(({ id, label, available }) => ({
+    id,
+    label,
+    available,
+  }));
+
   return {
     onboardingDone: true,
     shop,
     prompts,
     stats,
+    engines,
     rows: buildVisibilityRows(prompts, stats.mentions || []),
   };
 };
@@ -60,7 +87,8 @@ export const action = async ({ request }) => {
   const intent = formData.get("intent");
 
   if (intent === "run_scan") {
-    return runShopScan(shop);
+    const engines = parseEnginesFromFormData(formData);
+    return runShopScan(shop, { engines });
   }
 
   if (intent === "add_prompt") {
@@ -91,6 +119,17 @@ export default function VisibilityPage() {
   const [expandedId, setExpandedId] = useState(null);
   const [newQuestion, setNewQuestion] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [selectedEngines, setSelectedEngines] = useState(() =>
+    (data.engines || []).map((engine) => engine.id),
+  );
+
+  useEffect(() => {
+    const ids = (data.engines || []).map((engine) => engine.id);
+    setSelectedEngines((prev) => {
+      const stillValid = prev.filter((id) => ids.includes(id));
+      return stillValid.length ? stillValid : ids;
+    });
+  }, [data.engines]);
 
   useEffect(() => {
     if (!actionData) return;
@@ -174,16 +213,31 @@ export default function VisibilityPage() {
             <Button variant="ghost" onClick={() => setShowAdd((v) => !v)}>
               + Add question
             </Button>
-            <Button type="submit" form="visibility-scan-form" disabled={isScanning}>
+            <Button
+              type="submit"
+              form="visibility-scan-form"
+              disabled={isScanning || selectedEngines.length === 0}
+            >
               {isScanning ? "Scanning…" : "Run scan"}
             </Button>
           </>
         }
       />
 
+      <div className="cy-card" style={{ marginBottom: 16 }}>
+        <EngineSelect
+          engines={data.engines || []}
+          selected={selectedEngines}
+          onChange={setSelectedEngines}
+          formId="visibility-scan-form"
+          label="Engines to check"
+        />
+      </div>
+
       <InfoNote>
         Mention results vary between runs. Citely tracks frequency over many
-        scans instead of a single yes or no answer.
+        scans instead of a single yes or no answer. Select one or more engines
+        above — ChatGPT, Gemini, and Perplexity when configured.
       </InfoNote>
 
       {showAdd ? (
@@ -247,25 +301,45 @@ export default function VisibilityPage() {
                   <div style={{ marginTop: 14 }}>
                     {row.mentions.length ? (
                       <div className="cy-list">
-                        {row.mentions.map((mention) => (
-                          <div
-                            key={mention.id}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 12,
-                              fontSize: 13,
-                              color: "#6b7280",
-                            }}
-                          >
-                            <span>{mention.engine}</span>
-                            <span>
-                              {mention.mentioned
-                                ? `Named you${mention.rank ? ` (#${mention.rank})` : ""}`
-                                : `Missing${mention.rivalCited ? ` · ${mention.rivalCited}` : ""}`}
-                            </span>
-                          </div>
-                        ))}
+                        {row.mentions.map((mention) => {
+                          const excerpt = splitExcerpt(mention.rawExcerpt);
+                          return (
+                            <div
+                              key={mention.id}
+                              style={{
+                                display: "grid",
+                                gap: 6,
+                                fontSize: 13,
+                                color: "#6b7280",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 12,
+                                }}
+                              >
+                                <span>{mention.engine}</span>
+                                <span>
+                                  {mention.mentioned
+                                    ? `Named you${mention.rank ? ` (#${mention.rank})` : ""}`
+                                    : `Missing${mention.rivalCited ? ` · ${mention.rivalCited}` : ""}`}
+                                </span>
+                              </div>
+                              {excerpt.brands.length ? (
+                                <div>
+                                  Competitors: {excerpt.brands.slice(0, 6).join(", ")}
+                                </div>
+                              ) : null}
+                              {excerpt.sources.length ? (
+                                <div>
+                                  Sources: {excerpt.sources.slice(0, 4).join(" · ")}
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="cy-empty">Run a scan for engine detail.</div>

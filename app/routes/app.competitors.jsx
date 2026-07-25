@@ -12,6 +12,7 @@ import {
   Button,
   Card,
   CyPage,
+  EngineSelect,
   Metric,
   MetricRow,
   PageHeader,
@@ -25,6 +26,10 @@ import {
   buildCompetitorStandings,
   buildVisibilityRows,
 } from "../services/analytics.server";
+import {
+  listAvailableEngines,
+  parseEnginesFromFormData,
+} from "../services/engines.server";
 import { getScanStats, runShopScan } from "../services/scan.server";
 import { authenticate } from "../shopify.server";
 
@@ -59,6 +64,11 @@ export const loader = async ({ request }) => {
     competitors,
     losing,
     stats,
+    engines: listAvailableEngines().map(({ id, label, available }) => ({
+      id,
+      label,
+      available,
+    })),
   };
 };
 
@@ -70,7 +80,8 @@ export const action = async ({ request }) => {
   const intent = formData.get("intent");
 
   if (intent === "run_scan") {
-    return runShopScan(shop);
+    const engines = parseEnginesFromFormData(formData);
+    return runShopScan(shop, { engines });
   }
 
   if (intent === "track_competitor") {
@@ -93,6 +104,17 @@ export default function CompetitorsPage() {
   const shopify = useAppBridge();
   const [name, setName] = useState("");
   const [showTrack, setShowTrack] = useState(false);
+  const [selectedEngines, setSelectedEngines] = useState(() =>
+    (data.engines || []).map((engine) => engine.id),
+  );
+
+  useEffect(() => {
+    const ids = (data.engines || []).map((engine) => engine.id);
+    setSelectedEngines((prev) => {
+      const stillValid = prev.filter((id) => ids.includes(id));
+      return stillValid.length ? stillValid : ids;
+    });
+  }, [data.engines]);
 
   useEffect(() => {
     if (!actionData) return;
@@ -137,13 +159,23 @@ export default function CompetitorsPage() {
             <Button
               type="submit"
               form="competitors-scan-form"
-              disabled={isScanning}
+              disabled={isScanning || selectedEngines.length === 0}
             >
               {isScanning ? "Scanning…" : "Run scan"}
             </Button>
           </>
         }
       />
+
+      <div className="cy-card" style={{ marginBottom: 16 }}>
+        <EngineSelect
+          engines={data.engines || []}
+          selected={selectedEngines}
+          onChange={setSelectedEngines}
+          formId="competitors-scan-form"
+          label="Engines to check"
+        />
+      </div>
 
       {showTrack ? (
         <Form method="post" className="cy-card">

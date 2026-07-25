@@ -3,10 +3,10 @@ import { upsertCompetitorNames } from "../models/competitor.server";
 import { ensureBaselineFixes } from "../models/fixes.server";
 import { listActivePrompts } from "../models/prompt.server";
 import {
-  chatCompletion,
-  getEngineModels,
-  isOpenRouterConfigured,
-} from "./openrouter.server";
+  isAnyScanEngineConfigured,
+  resolveEnginesForScan,
+  runEngineChat,
+} from "./engines.server";
 
 function normalizeBrand(value = "") {
   return String(value)
@@ -60,31 +60,82 @@ function parseBrandList(content) {
     return "";
   };
 
+  const toSource = (item) => {
+    if (typeof item === "string") {
+      const value = item.trim();
+      if (!value) return null;
+      return { url: value, title: null };
+    }
+    if (item && typeof item === "object") {
+      const url = String(item.url || item.uri || item.link || "").trim();
+      if (!url) return null;
+      return {
+        url,
+        title: String(item.title || item.name || "").trim() || null,
+      };
+    }
+    return null;
+  };
+
   const fromParsed = (parsed) => {
     if (Array.isArray(parsed)) {
-      return parsed.map(toName).filter(Boolean);
+      return {
+        brands: parsed.map(toName).filter(Boolean),
+        sources: [],
+      };
     }
     if (!parsed || typeof parsed !== "object") return null;
+
     const list =
       parsed.brands ||
       parsed.stores ||
       parsed.recommendations ||
+      parsed.competitors ||
       parsed.names ||
       parsed.response;
-    if (Array.isArray(list)) return list.map(toName).filter(Boolean);
-    if (typeof list === "string") {
-      return list
+
+    let brands = [];
+    if (Array.isArray(list)) brands = list.map(toName).filter(Boolean);
+    else if (typeof list === "string") {
+      brands = list
         .split(/[\n,;]/)
         .map((part) => part.replace(/^[\d\-*.)\s]+/, "").trim())
         .filter((part) => part.length > 1 && part.length < 80)
         .slice(0, 12);
     }
-    return null;
+
+    const sourceBag = new Map();
+    const pushSource = (item) => {
+      const source = toSource(item);
+      if (!source?.url || sourceBag.has(source.url)) return;
+      sourceBag.set(source.url, source);
+    };
+
+    if (Array.isArray(parsed.sources)) {
+      parsed.sources.forEach(pushSource);
+    }
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        if (item && typeof item === "object") {
+          if (Array.isArray(item.sources)) item.sources.forEach(pushSource);
+          if (item.source) pushSource(item.source);
+          if (item.url) pushSource(item);
+        }
+      }
+    }
+
+    if (!brands.length && !sourceBag.size) return null;
+    return { brands, sources: [...sourceBag.values()] };
   };
 
   try {
     const direct = fromParsed(JSON.parse(cleaned));
-    if (direct?.length) return cleanBrandNames(direct);
+    if (direct) {
+      return {
+        brands: cleanBrandNames(direct.brands),
+        sources: direct.sources.slice(0, 8),
+      };
+    }
   } catch {
     // try embedded JSON next
   }
@@ -93,18 +144,55 @@ function parseBrandList(content) {
   if (embedded) {
     try {
       const nested = fromParsed(JSON.parse(embedded[0]));
-      if (nested?.length) return cleanBrandNames(nested);
+      if (nested) {
+        return {
+          brands: cleanBrandNames(nested.brands),
+          sources: nested.sources.slice(0, 8),
+        };
+      }
     } catch {
       // fall through
     }
   }
 
-  return cleanBrandNames(
-    cleaned
-      .split(/[\n,]/)
-      .map((part) => part.replace(/^[\d\-*.)\s]+/, "").trim())
-      .filter((part) => part.length > 1 && part.length < 80),
-  );
+  return {
+    brands: cleanBrandNames(
+      cleaned
+        .split(/[\n,]/)
+        .map((part) => part.replace(/^[\d\-*.)\s]+/, "").trim())
+        .filter((part) => part.length > 1 && part.length < 80),
+    ),
+    sources: [],
+  };
+}
+
+function mergeSources(...lists) {
+  const map = new Map();
+  for (const list of lists) {
+    for (const item of list || []) {
+      const url = String(item?.url || item || "").trim();
+      if (!url || map.has(url)) continue;
+      map.set(url, {
+        url,
+        title: item?.title ? String(item.title).trim() : null,
+      });
+    }
+  }
+  return [...map.values()].slice(0, 8);
+}
+
+function formatExcerpt(brands, sources, fallback = "") {
+  const brandPart = brands.slice(0, 8).join(", ");
+  const sourcePart = sources
+    .slice(0, 5)
+    .map((source) => source.title || source.url)
+    .filter(Boolean)
+    .join(" · ");
+
+  if (brandPart && sourcePart) {
+    return `${brandPart} || ${sourcePart}`.slice(0, 500);
+  }
+  return (brandPart || sourcePart || fallback || "").slice(0, 500);
 }
 
 function mentionedInList(brands, matchers) {
@@ -196,12 +284,12 @@ export async function getScanStats(shopId) {
   };
 }
 
-export async function runShopScan(shop) {
-  if (!isOpenRouterConfigured()) {
+export async function runShopScan(shop, options = {}) {
+  if (!isAnyScanEngineConfigured()) {
     return {
       ok: false,
       error:
-        "AI scanning isn’t available right now. Try again later or contact support.",
+        "AI scanning isn’t available right now. Add OPENROUTER_API_KEY and/or GEMINI_API_KEY, then try again.",
     };
   }
 
@@ -213,10 +301,13 @@ export async function runShopScan(shop) {
     };
   }
 
-  const engines = getEngineModels();
-  const engineNames = Object.keys(engines);
-  if (!engineNames.length) {
-    return { ok: false, error: "AI scanning isn’t configured yet. Try again later." };
+  const engines = resolveEnginesForScan(options.engines || []);
+  if (!engines.length) {
+    return {
+      ok: false,
+      error:
+        "Select at least one available AI engine (ChatGPT, Gemini, or Perplexity).",
+    };
   }
 
   const job = await prisma.scanJob.create({
@@ -237,30 +328,36 @@ export async function runShopScan(shop) {
     for (const prompt of prompts) {
       let promptMentioned = false;
 
-      for (const engine of engineNames) {
-        const model = engines[engine];
+      for (const engine of engines) {
         let brands = [];
+        let sources = [];
         let engineError = null;
 
         try {
-          const { content } = await chatCompletion({
-            model,
-            messages: [
-              {
-                role: "system",
-                content:
-                  'You recommend real online brands and stores for shoppers. Reply with JSON only: {"brands":["iHerb","Thorne","Amazon"]}. Use actual brand or retailer names only. Never use placeholders like Brand A, Brand B, Store 1, or Example.',
-              },
-              {
-                role: "user",
-                content: `Buyer question: ${prompt.text}\nNiche context: ${shop.niche || "general ecommerce"}\nReturn up to 8 real brand or store names, strongest recommendations first.`,
-              },
-            ],
-          });
-          brands = parseBrandList(content);
+          const { content, sources: groundingSources = [] } =
+            await runEngineChat(engine, {
+              max_tokens: 400,
+              messages: [
+                {
+                  role: "system",
+                  content:
+                    'You recommend real online brands and stores for shoppers. Use web search when available. Reply with JSON only: {"brands":[{"name":"iHerb","sources":["https://example.com/review"]}],"sources":["https://example.com/roundup"]}. Use actual brand or retailer names only. Never use placeholders like Brand A, Brand B, Store 1, or Example. Include source URLs that support each recommendation.',
+                },
+                {
+                  role: "user",
+                  content: `Buyer question: ${prompt.text}\nNiche context: ${shop.niche || "general ecommerce"}\nSearch the web if needed, then return up to 8 real competing brand or store names (strongest first) with source URLs.`,
+                },
+              ],
+            });
+          const parsed = parseBrandList(content);
+          brands = parsed.brands;
+          sources = mergeSources(parsed.sources, groundingSources);
         } catch (error) {
           engineError = error?.message || "Engine request failed";
-          console.error(`Scan engine failed (${engine}/${model}):`, engineError);
+          console.error(
+            `Scan engine failed (${engine.id}/${engine.model}):`,
+            engineError,
+          );
         }
 
         const mentioned = mentionedInList(brands, matchers);
@@ -276,12 +373,11 @@ export async function runShopScan(shop) {
           data: {
             scanJobId: job.id,
             promptId: prompt.id,
-            engine,
+            engine: engine.id,
             mentioned,
             rank: rankOfStore(brands, matchers),
             rivalCited: rival,
-            rawExcerpt: (brands.slice(0, 8).join(", ") || engineError || "")
-              .slice(0, 500),
+            rawExcerpt: formatExcerpt(brands, sources, engineError || ""),
           },
         });
         if (!engineError) completedMentions += 1;
@@ -292,7 +388,7 @@ export async function runShopScan(shop) {
 
     if (!completedMentions) {
       throw new Error(
-        "AI scan failed. Your OpenRouter account may be out of credits, or the model request was too large.",
+        "AI scan failed for every selected engine. Check API keys/credits and try again.",
       );
     }
 

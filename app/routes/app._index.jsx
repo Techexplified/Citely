@@ -1,5 +1,5 @@
 import { Form, Navigate, useActionData, useLoaderData, useNavigation } from "react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import {
@@ -8,6 +8,7 @@ import {
   CyPage,
   DataTable,
   EnginePill,
+  EngineSelect,
   Metric,
   PageHeader,
   ScoreRing,
@@ -19,6 +20,10 @@ import { getAiOrderStats } from "../models/orders.server";
 import { listCompetitors } from "../models/competitor.server";
 import { listActivePrompts } from "../models/prompt.server";
 import { buildCompetitorStandings } from "../services/analytics.server";
+import {
+  listAvailableEngines,
+  parseEnginesFromFormData,
+} from "../services/engines.server";
 import { getLatestScanJob, getScanStats, runShopScan } from "../services/scan.server";
 import { authenticate } from "../shopify.server";
 
@@ -74,6 +79,12 @@ export const loader = async ({ request }) => {
     competitors,
   );
 
+  const engines = listAvailableEngines().map(({ id, label, available }) => ({
+    id,
+    label,
+    available,
+  }));
+
   return {
     onboardingDone: true,
     shop,
@@ -83,6 +94,7 @@ export const loader = async ({ request }) => {
     latestJob,
     promptCount: prompts.length,
     recentOrders: revenue.orders.slice(0, 5),
+    engines,
   };
 };
 
@@ -95,7 +107,8 @@ export const action = async ({ request }) => {
   const intent = formData.get("intent");
 
   if (intent === "run_scan") {
-    return runShopScan(shop);
+    const engines = parseEnginesFromFormData(formData);
+    return runShopScan(shop, { engines });
   }
 
   return { ok: false, error: "Unknown action." };
@@ -106,6 +119,17 @@ export default function Overview() {
   const actionData = useActionData();
   const navigation = useNavigation();
   const shopify = useAppBridge();
+  const [selectedEngines, setSelectedEngines] = useState(() =>
+    (data.engines || []).map((engine) => engine.id),
+  );
+
+  useEffect(() => {
+    const ids = (data.engines || []).map((engine) => engine.id);
+    setSelectedEngines((prev) => {
+      const stillValid = prev.filter((id) => ids.includes(id));
+      return stillValid.length ? stillValid : ids;
+    });
+  }, [data.engines]);
 
   useEffect(() => {
     if (!actionData) return;
@@ -152,11 +176,25 @@ export default function Overview() {
           </>
         }
         actions={
-          <Button type="submit" form="run-scan-form" disabled={isScanning}>
+          <Button
+            type="submit"
+            form="run-scan-form"
+            disabled={isScanning || selectedEngines.length === 0}
+          >
             {isScanning ? "Scanning…" : "Run scan"}
           </Button>
         }
       />
+
+      <div className="cy-card" style={{ marginBottom: 16 }}>
+        <EngineSelect
+          engines={data.engines || []}
+          selected={selectedEngines}
+          onChange={setSelectedEngines}
+          formId="run-scan-form"
+          label="Engines to check"
+        />
+      </div>
 
       <div className="cy-grid-3">
         <Card label="AI visibility score">

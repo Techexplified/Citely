@@ -191,6 +191,67 @@ export function FilterPills({ options, value, onChange }) {
   );
 }
 
+/**
+ * Multi-select for AI engines used in visibility scans.
+ * Controlled: pass selected ids + onChange(nextIds).
+ * Also renders hidden inputs so parent forms submit `engines`.
+ */
+export function EngineSelect({
+  engines = [],
+  selected = [],
+  onChange,
+  name = "engines",
+  label = "Scan engines",
+  formId,
+}) {
+  const available = engines.filter((engine) => engine.available !== false);
+  const selectedSet = new Set(selected);
+
+  const toggle = (id) => {
+    if (!onChange) return;
+    if (selectedSet.has(id)) {
+      if (selectedSet.size <= 1) return;
+      onChange(selected.filter((value) => value !== id));
+      return;
+    }
+    onChange([...selected, id]);
+  };
+
+  if (!available.length) {
+    return (
+      <div className="cy-engine-select">
+        <span className="cy-engine-select__label">{label}</span>
+        <span className="cy-engine-select__empty">No engines configured</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cy-engine-select">
+      <span className="cy-engine-select__label">{label}</span>
+      <div className="cy-engine-select__list" role="group" aria-label={label}>
+        {available.map((engine) => {
+          const active = selectedSet.has(engine.id);
+          return (
+            <button
+              key={engine.id}
+              type="button"
+              className={`cy-engine-chip ${active ? "is-active" : ""}`}
+              aria-pressed={active}
+              onClick={() => toggle(engine.id)}
+            >
+              {engine.label || engine.id}
+            </button>
+          );
+        })}
+      </div>
+      {selected.map((id) => (
+        <input key={id} type="hidden" name={name} value={id} form={formId} />
+      ))}
+    </div>
+  );
+}
+
 export function InfoNote({ children, onDismiss }) {
   const [open, setOpen] = useState(true);
   if (!open) return null;
