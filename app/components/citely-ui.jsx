@@ -84,14 +84,18 @@ export function ShareBar({ value = 0, you = false }) {
 }
 
 export function StandingsList({ rows = [] }) {
-  if (!rows.length) {
+  const clean = (rows || []).filter(
+    (row) => row?.name && String(row.name).trim().length > 0,
+  );
+
+  if (!clean.length) {
     return <div className="cy-empty">No standings yet. Run a scan.</div>;
   }
 
   return (
     <div className="cy-standings">
-      {rows.map((row, index) => (
-        <div className="cy-stand-row" key={row.name}>
+      {clean.map((row, index) => (
+        <div className="cy-stand-row" key={`${row.name}-${index}`}>
           <div className="cy-rank">{index + 1}</div>
           <div>
             <div className="cy-stand-meta">
@@ -248,6 +252,211 @@ export function EngineSelect({
       {selected.map((id) => (
         <input key={id} type="hidden" name={name} value={id} form={formId} />
       ))}
+    </div>
+  );
+}
+
+export function ScanBanner({
+  scanning = false,
+  progress = null,
+  lastScanAt = null,
+  error = null,
+}) {
+  if (scanning) {
+    const completed = progress?.completed || 0;
+    const total = progress?.total || 0;
+    const engine = progress?.currentEngine;
+    const prompt = progress?.currentPrompt;
+    return (
+      <div className="cy-scan cy-scan--running" role="status" aria-live="polite">
+        <div className="cy-scan__pulse" />
+        <div className="cy-scan__body">
+          <strong>Scan running</strong>
+          <p>
+            {engine
+              ? `Checking ${engine}${prompt ? ` · “${prompt}”` : ""}`
+              : "Asking AI engines about your tracked buyer questions…"}
+          </p>
+          {total > 0 ? (
+            <div className="cy-scan__bar">
+              <span style={{ width: `${Math.round((completed / total) * 100)}%` }} />
+            </div>
+          ) : (
+            <div className="cy-scan__bar cy-scan__bar--indeterminate">
+              <span />
+            </div>
+          )}
+          {total > 0 ? (
+            <div className="cy-scan__meta">
+              {completed} / {total} checks
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="cy-scan cy-scan--error" role="status">
+        <div className="cy-scan__body">
+          <strong>Last scan failed</strong>
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (lastScanAt) {
+    return (
+      <div className="cy-scan" role="status">
+        <div className="cy-scan__body">
+          <strong>Scan idle</strong>
+          <p>
+            Last completed {new Date(lastScanAt).toLocaleString()}. Run a scan to
+            refresh mentions and sources.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cy-scan" role="status">
+      <div className="cy-scan__body">
+        <strong>No scan yet</strong>
+        <p>Run a scan to see which engines name you and which sources they used.</p>
+      </div>
+    </div>
+  );
+}
+
+function sourceHost(source) {
+  if (source?.url) {
+    try {
+      return new URL(source.url).hostname.replace(/^www\./, "");
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function sourceLabel(source) {
+  if (source?.title) return source.title;
+  return sourceHost(source) || source?.url || "Source";
+}
+
+function groupSourcesByHost(sources = []) {
+  const groups = new Map();
+  for (const source of sources) {
+    const host = sourceHost(source) || "Other";
+    const list = groups.get(host) || [];
+    list.push(source);
+    groups.set(host, list);
+  }
+  return [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+}
+
+export function SourceList({
+  sources = [],
+  empty = "No sources captured for this answer.",
+  compact = false,
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (!sources?.length) {
+    return <div className="cy-sources cy-sources--empty">{empty}</div>;
+  }
+
+  if (compact) {
+    return (
+      <ul className="cy-sources cy-sources--compact">
+        {sources.slice(0, 4).map((source) => {
+          const key = source.url || source.title;
+          const label = sourceLabel(source);
+          return (
+            <li key={key}>
+              {source.url ? (
+                <a href={source.url} target="_blank" rel="noreferrer">
+                  {label}
+                </a>
+              ) : (
+                <span>{label}</span>
+              )}
+            </li>
+          );
+        })}
+        {sources.length > 4 ? (
+          <li className="cy-sources__more">+{sources.length - 4} more</li>
+        ) : null}
+      </ul>
+    );
+  }
+
+  const groups = groupSourcesByHost(sources);
+  const siteCount = groups.length;
+
+  return (
+    <div className="cy-sources-panel">
+      <button
+        type="button"
+        className={`cy-sources-toggle ${open ? "is-open" : ""}`}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span>
+          <strong>{sources.length}</strong> source{sources.length === 1 ? "" : "s"}
+          <span className="cy-sources-toggle__meta">
+            · {siteCount} site{siteCount === 1 ? "" : "s"}
+          </span>
+        </span>
+        <span className="cy-sources-toggle__chevron">{open ? "Hide" : "Show"}</span>
+      </button>
+
+      {open ? (
+        <div className="cy-sources-groups">
+          {groups.map(([host, items]) => (
+            <div className="cy-sources-group" key={host}>
+              <div className="cy-sources-group__head">
+                <span>{host}</span>
+                <span>{items.length}</span>
+              </div>
+              <ul className="cy-sources">
+                {items.map((source) => {
+                  const key = source.url || source.title;
+                  const label = sourceLabel(source);
+                  const showHostOnly = label === host;
+                  return (
+                    <li key={key}>
+                      {source.url ? (
+                        <a href={source.url} target="_blank" rel="noreferrer">
+                          {showHostOnly ? source.url.replace(/^https?:\/\//, "") : label}
+                        </a>
+                      ) : (
+                        <span>{label}</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="cy-sources-preview">
+          {groups.slice(0, 5).map(([host]) => (
+            <span className="cy-sources-chip" key={host}>
+              {host}
+            </span>
+          ))}
+          {groups.length > 5 ? (
+            <span className="cy-sources-chip cy-sources-chip--more">
+              +{groups.length - 5}
+            </span>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

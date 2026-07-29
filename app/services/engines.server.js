@@ -12,6 +12,7 @@ import {
 /**
  * Catalog of AI engines Citely can scan against.
  * Prefer lowest-token models that still support web search.
+ * Perplexity is opt-in via ENABLE_PERPLEXITY=1 (needs OpenRouter).
  */
 const ENGINE_CATALOG = [
   {
@@ -35,6 +36,7 @@ const ENGINE_CATALOG = [
     // Sonar already searches the web; keep tool off to avoid double search cost.
     model: "perplexity/sonar",
     webSearch: false,
+    optIn: true,
   },
 ];
 
@@ -56,33 +58,43 @@ function applyModelOverrides(engines) {
   }
 }
 
+function isEngineEnabled(engine) {
+  if (!engine.optIn) return true;
+  const flag = String(process.env.ENABLE_PERPLEXITY || "")
+    .trim()
+    .toLowerCase();
+  return flag === "1" || flag === "true" || flag === "yes";
+}
+
 export function listEngineCatalog() {
-  return applyModelOverrides(ENGINE_CATALOG).map((engine) => {
-    const useDirectGemini =
-      engine.provider === "gemini" && isGeminiConfigured();
-    const available =
-      engine.provider === "gemini"
-        ? isGeminiConfigured() || isOpenRouterConfigured()
-        : isOpenRouterConfigured();
+  return applyModelOverrides(ENGINE_CATALOG)
+    .filter((engine) => isEngineEnabled(engine))
+    .map((engine) => {
+      const useDirectGemini =
+        engine.provider === "gemini" && isGeminiConfigured();
+      const available =
+        engine.provider === "gemini"
+          ? isGeminiConfigured() || isOpenRouterConfigured()
+          : isOpenRouterConfigured();
 
-    let model = engine.model;
-    if (engine.provider === "gemini") {
-      model = useDirectGemini
-        ? engine.model || getGeminiModel()
-        : engine.model || "google/gemini-3.6-flash";
-    }
+      let model = engine.model;
+      if (engine.provider === "gemini") {
+        model = useDirectGemini
+          ? engine.model || getGeminiModel()
+          : engine.model || "google/gemini-3.6-flash";
+      }
 
-    return {
-      ...engine,
-      model,
-      resolveProvider: useDirectGemini
-        ? "gemini"
-        : engine.provider === "gemini"
-          ? "openrouter"
-          : engine.provider,
-      available,
-    };
-  });
+      return {
+        ...engine,
+        model,
+        resolveProvider: useDirectGemini
+          ? "gemini"
+          : engine.provider === "gemini"
+            ? "openrouter"
+            : engine.provider,
+        available,
+      };
+    });
 }
 
 export function listAvailableEngines() {

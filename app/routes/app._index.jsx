@@ -1,4 +1,4 @@
-import { Form, Navigate, useActionData, useLoaderData, useNavigation } from "react-router";
+import { Form, Navigate, useActionData, useLoaderData, useNavigation, useRevalidator } from "react-router";
 import { useEffect, useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -11,6 +11,7 @@ import {
   EngineSelect,
   Metric,
   PageHeader,
+  ScanBanner,
   ScoreRing,
   StandingsList,
   TextLink,
@@ -24,7 +25,7 @@ import {
   listAvailableEngines,
   parseEnginesFromFormData,
 } from "../services/engines.server";
-import { getLatestScanJob, getScanStats, runShopScan } from "../services/scan.server";
+import { getScanStats, runShopScan } from "../services/scan.server";
 import { authenticate } from "../shopify.server";
 
 function formatMoney(value, currency = "USD") {
@@ -58,18 +59,16 @@ export const loader = async ({ request }) => {
       stats: null,
       revenue: null,
       standings: null,
-      latestJob: null,
       recentOrders: [],
     };
   }
 
   await ensurePrimaryPrompt(shop);
 
-  const [stats, revenue, competitors, latestJob, prompts] = await Promise.all([
+  const [stats, revenue, competitors, prompts] = await Promise.all([
     getScanStats(shop.id),
     getAiOrderStats(shop.id),
     listCompetitors(shop.id),
-    getLatestScanJob(shop.id),
     listActivePrompts(shop.id),
   ]);
 
@@ -91,7 +90,6 @@ export const loader = async ({ request }) => {
     stats,
     revenue,
     standings,
-    latestJob,
     promptCount: prompts.length,
     recentOrders: revenue.orders.slice(0, 5),
     engines,
@@ -118,6 +116,7 @@ export default function Overview() {
   const data = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
+  const revalidator = useRevalidator();
   const shopify = useAppBridge();
   const [selectedEngines, setSelectedEngines] = useState(() =>
     (data.engines || []).map((engine) => engine.id),
@@ -134,31 +133,41 @@ export default function Overview() {
   useEffect(() => {
     if (!actionData) return;
     if (actionData.ok) {
-      shopify.toast.show("Scan complete. Mention rates updated across engines.");
+      shopify.toast.show(
+        actionData.message ||
+          "Scan complete. Mention rates updated across engines.",
+      );
     } else if (actionData.error) {
       shopify.toast.show(actionData.error);
     }
   }, [actionData, shopify]);
 
-  if (!data.onboardingDone) {
-    return <Navigate to="/app/onboarding" replace />;
-  }
-
-  const {
-    shop,
-    stats,
-    revenue,
-    standings,
-    recentOrders,
-  } = data;
-
   const isScanning =
     navigation.state === "submitting" &&
     navigation.formData?.get("intent") === "run_scan";
 
+  useEffect(() => {
+    if (!isScanning) return undefined;
+    const id = setInterval(() => {
+      if (revalidator.state === "idle") revalidator.revalidate();
+    }, 2500);
+    return () => clearInterval(id);
+  }, [isScanning, revalidator]);
+
+  if (!data.onboardingDone) {
+    return <Navigate to="/app/onboarding" replace />;
+  }
+
+  const { shop, stats, revenue, standings, recentOrders } = data;
+
   const currency = shop.currency || "USD";
   const score = Math.round((stats?.mentionRate || 0) * 100);
-  const topRivals = (standings?.standings || []).slice(0, 4);
+  const topRival = (standings?.standings || [])
+    .filter((row) => !row.isYou)
+    .slice(0, 1);
+  const progress = stats?.progress;
+  const scanError =
+    !isScanning && progress?.status === "error" ? progress.error : null;
 
   return (
     <CyPage>
@@ -186,7 +195,20 @@ export default function Overview() {
         }
       />
 
-      <div className="cy-card" style={{ marginBottom: 16 }}>
+      <ScanBanner
+        scanning={isScanning || progress?.status === "running"}
+        progress={
+          isScanning
+            ? progress?.status === "running"
+              ? progress
+              : { completed: 0, total: 0 }
+            : progress
+        }
+        lastScanAt={stats?.lastScanAt}
+        error={scanError}
+      />
+
+      <div className="cy-card">
         <EngineSelect
           engines={data.engines || []}
           selected={selectedEngines}
@@ -236,7 +258,7 @@ export default function Overview() {
             ) : null
           }
         >
-          <StandingsList rows={topRivals} />
+          <StandingsList rows={topRival} />
           <div style={{ marginTop: 14 }}>
             <TextLink to="/app/competitors">View full standings →</TextLink>
           </div>
@@ -256,7 +278,11 @@ export default function Overview() {
               label: "From",
               render: (row) => <EnginePill>{row.engine || "AI"}</EnginePill>,
             },
-            { key: "productTitle", label: "Product", render: (row) => row.productTitle || "—" },
+            {
+              key: "productTitle",
+              label: "Product",
+              render: (row) => row.productTitle || "—",
+            },
             {
               key: "orderedAt",
               label: "Date",

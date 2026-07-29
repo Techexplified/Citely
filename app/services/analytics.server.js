@@ -1,4 +1,11 @@
-import { getScanStats } from "../services/scan.server";
+import {
+  cleanBrandNames,
+  isJunkBrand,
+  normalizeBrand,
+  parseExcerpt,
+  sanitizeBrandCandidate,
+  storeMatchers,
+} from "./brands.server";
 
 export function buildVisibilityRows(prompts, mentions) {
   return prompts.map((prompt) => {
@@ -14,81 +21,131 @@ export function buildVisibilityRows(prompts, mentions) {
             ? "mentioned"
             : "partial";
 
+    const enriched = promptMentions.map((mention) => {
+      const excerpt = parseExcerpt(mention.rawExcerpt);
+      return {
+        ...mention,
+        brands: excerpt.brands,
+        sources: excerpt.sources,
+        engineError: excerpt.error,
+      };
+    });
+
+    const allSources = [];
+    const seen = new Set();
+    for (const mention of enriched) {
+      for (const source of mention.sources || []) {
+        const key = source.url || source.title;
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        allSources.push(source);
+      }
+    }
+
     return {
       prompt,
-      mentions: promptMentions,
+      mentions: enriched,
       mentionedCount,
       engineCount,
       status,
+      sources: allSources.slice(0, 8),
     };
   });
 }
 
 export function buildCompetitorStandings(shop, mentions, competitors) {
   const brandCounts = new Map();
+  const matchers = storeMatchers(shop);
+  const youName = shop.storeName || "You";
+  const youKey = normalizeBrand(youName) || "you";
 
   const bump = (name, isYou = false) => {
     if (!name) return;
-    const key = name.trim();
+
+    let display = isYou ? String(name).trim() : cleanBrandNames([name])[0];
+    if (!display && isYou) display = youName;
+    if (!display) return;
+    if (!isYou && isJunkBrand(display)) return;
+
+    const key = normalizeBrand(display) || (isYou ? youKey : "");
     if (!key) return;
+
     const current = brandCounts.get(key) || {
-      name: key,
+      name: display,
       mentions: 0,
-      isYou,
+      isYou: false,
     };
     current.mentions += 1;
     current.isYou = current.isYou || isYou;
+    // Prefer cleaner display names over debris
+    if (!isJunkBrand(display) && display.length <= current.name.length) {
+      current.name = display;
+    }
     brandCounts.set(key, current);
   };
 
   for (const mention of mentions) {
-    if (mention.mentioned) bump(shop.storeName || "You", true);
-    if (mention.rivalCited) bump(mention.rivalCited, false);
-    if (mention.rawExcerpt) {
-      const brandPart = String(mention.rawExcerpt).split("||")[0] || "";
-      brandPart.split(",").forEach((part) => {
-        const name = part.trim();
-        if (!name) return;
-        const isYou =
-          shop.storeName &&
-          name.toLowerCase().includes(String(shop.storeName).toLowerCase());
-        bump(name, Boolean(isYou));
-      });
+    if (mention.mentioned) bump(youName, true);
+
+    const excerpt = parseExcerpt(mention.rawExcerpt);
+    const rivals = cleanBrandNames(excerpt.brands, { exclude: matchers });
+    const ranked = [];
+
+    const rivalClean = cleanBrandNames([
+      sanitizeBrandCandidate(mention.rivalCited || ""),
+    ])[0];
+    if (rivalClean) ranked.push(rivalClean);
+
+    for (const brand of rivals) {
+      if (ranked.some((r) => normalizeBrand(r) === normalizeBrand(brand))) {
+        continue;
+      }
+      ranked.push(brand);
     }
+
+    // Weight rank position: #1 counts more than #2/#3
+    ranked.slice(0, 3).forEach((brand, index) => {
+      const weight = index === 0 ? 3 : index === 1 ? 2 : 1;
+      for (let i = 0; i < weight; i += 1) bump(brand, false);
+    });
   }
 
+  // Tracked competitors with no scan hits stay at 0% (not equal-share padding)
   for (const competitor of competitors) {
-    if (!brandCounts.has(competitor.name)) {
-      brandCounts.set(competitor.name, {
-        name: competitor.name,
-        mentions: 0,
-        isYou: false,
-      });
-    }
+    const cleaned = cleanBrandNames([competitor.name])[0];
+    if (!cleaned) continue;
+    const key = normalizeBrand(cleaned);
+    if (!key || brandCounts.has(key)) continue;
+    brandCounts.set(key, {
+      name: cleaned,
+      mentions: 0,
+      isYou: false,
+    });
   }
 
-  if (shop.storeName && !brandCounts.has(shop.storeName)) {
-    brandCounts.set(shop.storeName, {
+  if (shop.storeName && !brandCounts.has(youKey)) {
+    brandCounts.set(youKey, {
       name: shop.storeName,
       mentions: 0,
       isYou: true,
     });
   }
 
-  const total = [...brandCounts.values()].reduce(
-    (sum, row) => sum + row.mentions,
-    0,
+  const scored = [...brandCounts.values()].filter(
+    (row) => row.isYou || row.mentions > 0,
   );
+  const total = scored.reduce((sum, row) => sum + row.mentions, 0);
 
-  const standings = [...brandCounts.values()]
+  const standings = scored
     .map((row) => ({
       ...row,
       share: total ? Math.round((row.mentions / total) * 100) : 0,
     }))
-    .sort((a, b) => b.share - a.share || b.mentions - a.mentions);
+    .sort((a, b) => b.share - a.share || b.mentions - a.mentions || a.name.localeCompare(b.name))
+    .slice(0, 12);
 
   const yourIndex = standings.findIndex((row) => row.isYou);
-  const leader = standings[0] || null;
+  const leader = standings.find((row) => !row.isYou) || standings[0] || null;
   const you = yourIndex >= 0 ? standings[yourIndex] : null;
 
   return {
@@ -97,11 +154,6 @@ export function buildCompetitorStandings(shop, mentions, competitors) {
     totalBrands: standings.length,
     yourShare: you?.share || 0,
     gapToLeader:
-      leader && you && !leader.isYou ? leader.share - you.share : 0,
+      leader && you && !leader.isYou ? Math.max(leader.share - you.share, 0) : 0,
   };
-}
-
-export async function getDashboardBundle(shop) {
-  const stats = await getScanStats(shop.id);
-  return stats;
 }

@@ -5,6 +5,7 @@ import {
   useActionData,
   useLoaderData,
   useNavigation,
+  useRevalidator,
 } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -16,6 +17,7 @@ import {
   Metric,
   MetricRow,
   PageHeader,
+  ScanBanner,
   StandingsList,
   TextLink,
 } from "../components/citely-ui";
@@ -101,6 +103,7 @@ export default function CompetitorsPage() {
   const data = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
+  const revalidator = useRevalidator();
   const shopify = useAppBridge();
   const [name, setName] = useState("");
   const [showTrack, setShowTrack] = useState(false);
@@ -127,13 +130,22 @@ export default function CompetitorsPage() {
     }
   }, [actionData, shopify]);
 
+  const isScanning =
+    navigation.state === "submitting" &&
+    navigation.formData?.get("intent") === "run_scan";
+
+  useEffect(() => {
+    if (!isScanning) return undefined;
+    const id = setInterval(() => {
+      if (revalidator.state === "idle") revalidator.revalidate();
+    }, 2500);
+    return () => clearInterval(id);
+  }, [isScanning, revalidator]);
+
   if (!data.onboardingDone) {
     return <Navigate to="/app/onboarding" replace />;
   }
 
-  const isScanning =
-    navigation.state === "submitting" &&
-    navigation.formData?.get("intent") === "run_scan";
   const isTracking =
     navigation.state === "submitting" &&
     navigation.formData?.get("intent") === "track_competitor";
@@ -141,6 +153,9 @@ export default function CompetitorsPage() {
   const { shop, standings, losing } = data;
   const leaderName =
     standings.standings?.find((row) => !row.isYou)?.name || "leader";
+  const progress = data.stats?.progress;
+  const scanError =
+    !isScanning && progress?.status === "error" ? progress.error : null;
 
   return (
     <CyPage>
@@ -150,7 +165,7 @@ export default function CompetitorsPage() {
 
       <PageHeader
         title="Competitors"
-        subtitle="Who AI recommends in your niche, and the questions they win that you don't."
+        subtitle="Real brands AI recommends in your niche, and the questions they win."
         actions={
           <>
             <Button variant="ghost" onClick={() => setShowTrack((v) => !v)}>
@@ -167,7 +182,20 @@ export default function CompetitorsPage() {
         }
       />
 
-      <div className="cy-card" style={{ marginBottom: 16 }}>
+      <ScanBanner
+        scanning={isScanning || progress?.status === "running"}
+        progress={
+          isScanning
+            ? progress?.status === "running"
+              ? progress
+              : { completed: 0, total: 0 }
+            : progress
+        }
+        lastScanAt={data.stats?.lastScanAt}
+        error={scanError}
+      />
+
+      <div className="cy-card">
         <EngineSelect
           engines={data.engines || []}
           selected={selectedEngines}
@@ -186,7 +214,7 @@ export default function CompetitorsPage() {
               name="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="DreamWell"
+              placeholder="Brand name only"
             />
             <Button type="submit" disabled={isTracking}>
               {isTracking ? "Saving…" : "Track"}
@@ -207,11 +235,7 @@ export default function CompetitorsPage() {
         </Card>
         <Card>
           <Metric
-            value={
-              standings.yourRank
-                ? `#${standings.yourRank}`
-                : "—"
-            }
+            value={standings.yourRank ? `#${standings.yourRank}` : "—"}
             hint={
               standings.totalBrands
                 ? `of ${standings.totalBrands} brands ranked`
@@ -222,9 +246,7 @@ export default function CompetitorsPage() {
         <Card>
           <Metric
             value={
-              standings.gapToLeader
-                ? `-${standings.gapToLeader} pts`
-                : "0 pts"
+              standings.gapToLeader ? `-${standings.gapToLeader} pts` : "0 pts"
             }
             hint={`Gap to ${leaderName}`}
           />
@@ -247,7 +269,7 @@ export default function CompetitorsPage() {
         label="Share of voice"
         action={
           <span className="cy-metric__hint">
-            How often each brand is named across scans
+            Brands only · URLs and publishers filtered out
           </span>
         }
       >

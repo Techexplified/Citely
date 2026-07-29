@@ -5,17 +5,21 @@ import {
   useActionData,
   useLoaderData,
   useNavigation,
+  useRevalidator,
 } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import {
   Button,
+  Card,
   CyPage,
   EngineMeter,
   EngineSelect,
   FilterPills,
   InfoNote,
   PageHeader,
+  ScanBanner,
+  SourceList,
   StatusPill,
   TextLink,
 } from "../components/citely-ui";
@@ -32,21 +36,6 @@ import {
 } from "../services/engines.server";
 import { getScanStats, runShopScan } from "../services/scan.server";
 import { authenticate } from "../shopify.server";
-
-function splitExcerpt(rawExcerpt = "") {
-  const text = String(rawExcerpt || "");
-  const [brandPart, ...rest] = text.split("||");
-  const brands = (brandPart || "")
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const sources = rest
-    .join("||")
-    .split("·")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return { brands, sources };
-}
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -114,6 +103,7 @@ export default function VisibilityPage() {
   const data = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
+  const revalidator = useRevalidator();
   const shopify = useAppBridge();
   const [filter, setFilter] = useState("all");
   const [expandedId, setExpandedId] = useState(null);
@@ -142,6 +132,19 @@ export default function VisibilityPage() {
     }
   }, [actionData, shopify]);
 
+  const isScanning =
+    navigation.state === "submitting" &&
+    navigation.formData?.get("intent") === "run_scan";
+
+  // While the request is in flight, keep the banner fresh
+  useEffect(() => {
+    if (!isScanning) return undefined;
+    const id = setInterval(() => {
+      if (revalidator.state === "idle") revalidator.revalidate();
+    }, 2500);
+    return () => clearInterval(id);
+  }, [isScanning, revalidator]);
+
   const filteredRows = useMemo(() => {
     const rows = data.rows || [];
     if (filter === "mentioned") {
@@ -159,9 +162,6 @@ export default function VisibilityPage() {
     return <Navigate to="/app/onboarding" replace />;
   }
 
-  const isScanning =
-    navigation.state === "submitting" &&
-    navigation.formData?.get("intent") === "run_scan";
   const isAdding =
     navigation.state === "submitting" &&
     navigation.formData?.get("intent") === "add_prompt";
@@ -175,6 +175,10 @@ export default function VisibilityPage() {
     missing: data.rows?.filter((r) => r.status === "missing").length || 0,
   };
 
+  const progress = data.stats?.progress;
+  const scanError =
+    !isScanning && progress?.status === "error" ? progress.error : null;
+
   return (
     <CyPage>
       <Form id="visibility-scan-form" method="post">
@@ -183,7 +187,7 @@ export default function VisibilityPage() {
 
       <PageHeader
         title="Visibility"
-        subtitle="The exact buyer questions we track, and whether AI names you."
+        subtitle="Buyer questions we track, whether AI names you, and the sources engines used."
         meta={
           <div className="cy-summary-inline">
             <span>
@@ -195,7 +199,7 @@ export default function VisibilityPage() {
             </span>
             <span>
               <span className="cy-dot cy-dot--red" />
-              <strong>{counts.missing}</strong> You're invisible
+              <strong>{counts.missing}</strong> You are invisible
             </span>
           </div>
         }
@@ -224,7 +228,20 @@ export default function VisibilityPage() {
         }
       />
 
-      <div className="cy-card" style={{ marginBottom: 16 }}>
+      <ScanBanner
+        scanning={isScanning || progress?.status === "running"}
+        progress={
+          isScanning
+            ? progress?.status === "running"
+              ? progress
+              : { completed: 0, total: 0 }
+            : progress
+        }
+        lastScanAt={data.stats?.lastScanAt}
+        error={scanError}
+      />
+
+      <div className="cy-card">
         <EngineSelect
           engines={data.engines || []}
           selected={selectedEngines}
@@ -234,10 +251,16 @@ export default function VisibilityPage() {
         />
       </div>
 
+      {data.stats?.topSources?.length ? (
+        <Card label="Sources AI used in the latest scan">
+          <SourceList sources={data.stats.topSources} />
+        </Card>
+      ) : null}
+
       <InfoNote>
         Mention results vary between runs. Citely tracks frequency over many
-        scans instead of a single yes or no answer. Select one or more engines
-        above — ChatGPT, Gemini, and Perplexity when configured.
+        scans instead of a single yes or no answer. Expand a question to see
+        which engines named you and which web sources they pulled from.
       </InfoNote>
 
       {showAdd ? (
@@ -292,7 +315,7 @@ export default function VisibilityPage() {
                       variant="quiet"
                       onClick={() => setExpandedId(open ? null : row.prompt.id)}
                     >
-                      {open ? "▴" : "▾"}
+                      {open ? "Hide" : "Sources"}
                     </Button>
                   </div>
                 </div>
@@ -300,46 +323,38 @@ export default function VisibilityPage() {
                 {open ? (
                   <div style={{ marginTop: 14 }}>
                     {row.mentions.length ? (
-                      <div className="cy-list">
-                        {row.mentions.map((mention) => {
-                          const excerpt = splitExcerpt(mention.rawExcerpt);
-                          return (
-                            <div
-                              key={mention.id}
-                              style={{
-                                display: "grid",
-                                gap: 6,
-                                fontSize: 13,
-                                color: "#6b7280",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  gap: 12,
-                                }}
-                              >
-                                <span>{mention.engine}</span>
-                                <span>
-                                  {mention.mentioned
-                                    ? `Named you${mention.rank ? ` (#${mention.rank})` : ""}`
-                                    : `Missing${mention.rivalCited ? ` · ${mention.rivalCited}` : ""}`}
-                                </span>
-                              </div>
-                              {excerpt.brands.length ? (
-                                <div>
-                                  Competitors: {excerpt.brands.slice(0, 6).join(", ")}
-                                </div>
-                              ) : null}
-                              {excerpt.sources.length ? (
-                                <div>
-                                  Sources: {excerpt.sources.slice(0, 4).join(" · ")}
-                                </div>
-                              ) : null}
+                      <div>
+                        {row.mentions.map((mention) => (
+                          <div className="cy-mention-block" key={mention.id}>
+                            <div className="cy-mention-block__head">
+                              <span>{mention.engine}</span>
+                              <span>
+                                {mention.mentioned
+                                  ? `Named you${mention.rank ? ` (#${mention.rank})` : ""}`
+                                  : `Missing${mention.rivalCited ? ` · ${mention.rivalCited}` : ""}`}
+                              </span>
                             </div>
-                          );
-                        })}
+                            {mention.brands?.length ? (
+                              <div>
+                                Brands named: {mention.brands.slice(0, 6).join(", ")}
+                              </div>
+                            ) : null}
+                            <div>
+                              <div style={{ fontWeight: 600, color: "#111" }}>
+                                Sources extracted
+                              </div>
+                              <SourceList
+                                sources={mention.sources || []}
+                                compact
+                                empty={
+                                  mention.engineError
+                                    ? `Engine error: ${mention.engineError}`
+                                    : "No sources returned for this engine."
+                                }
+                              />
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <div className="cy-empty">Run a scan for engine detail.</div>
