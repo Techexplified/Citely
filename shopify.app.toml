@@ -2,14 +2,14 @@
 
 client_id = "7626ea812d767cccda0852c3c80a07bb"
 name = "Citely"
-application_url = "https://shopify.dev/apps/default-app-home"
+application_url = "https://citely-fawn.vercel.app"
 embedded = true
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,write_content,read_products"
+scopes = "write_products,write_content,read_products,read_orders"
 
-[product.metafields.app.demo_info]
+[product.metafields.app.demo_info] 
 type = "single_line_text_field"
 name = "Demo Source Info"
 description = "Tracks products created by the Shopify app template for development"
@@ -45,7 +45,7 @@ api_version = "2026-10"
   topics = [ "app/scopes_update" ]
 
 [auth]
-redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+redirect_urls = [ "https://citely-fawn.vercel.app/auth/callback", "https://citely-fawn.vercel.app/api/auth" ]
 
 [build]
 automatically_update_urls_on_dev = true

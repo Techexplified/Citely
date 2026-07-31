@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Form,
+  redirect,
   useActionData,
+  useFetcher,
   useLoaderData,
   useNavigation,
 } from "react-router";
@@ -46,11 +48,19 @@ import {
   ensureShop,
   upsertShopProfile,
 } from "../models/shop.server";
+import {
+  generateBuyerPersona,
+  generateBuyingPrompts,
+} from "../services/onboarding-ai.server";
 import { runShopScan } from "../services/scan.server";
 import {
   listAvailableEngines,
   parseEnginesFromFormData,
 } from "../services/engines.server";
+import {
+  templatePersona,
+  templatePromptSuggestions,
+} from "../utils/onboarding-templates";
 import { getThemeEmbedEditorUrl } from "../utils/theme.server";
 import { EngineSelect } from "../components/citely-ui";
 
@@ -93,42 +103,6 @@ const BUDGETS = [
   { value: "Mixed buyers", icon: Shuffle },
 ];
 
-function buildPersona({ storeName, audience, purchasePurpose, budget }) {
-  const who =
-    audience === "Everyone"
-      ? "a broad mix of shoppers"
-      : audience === "Businesses"
-        ? "business and trade buyers"
-        : `mostly ${audience.toLowerCase()}`;
-
-  const spend = budget.includes("Budget")
-    ? "hunts for value and deals before committing"
-    : budget.includes("Premium")
-      ? "pays more for quality and a trusted brand"
-      : budget.includes("Mid-range")
-        ? "balances quality against price before buying"
-        : "spends with a mix of impulse and careful comparison";
-
-  const buys = purchasePurpose.includes("All kinds")
-    ? "across everyday needs, gifts, and the occasional treat"
-    : `mainly for ${purchasePurpose.toLowerCase()}`;
-
-  return `Your buyer is ${who} shopping ${buys}. They ${spend}. Before purchasing they compare options and weigh price, product specifics, and reviews, which is exactly what they type into ChatGPT, Perplexity, and Gemini. Citely will track those buying questions and measure how often ${storeName || "your store"} appears across multiple runs.`;
-}
-
-function buildPromptSuggestions(storeName, niche) {
-  const nicheLabel =
-    NICHES.find((item) => item.value === niche)?.label?.toLowerCase() ||
-    "products";
-
-  return [
-    `Best ${nicheLabel} stores online for quality and trust?`,
-    `Where can I buy ${nicheLabel} online with reliable shipping?`,
-    `${storeName || "This brand"} vs alternatives, which should I choose?`,
-    `Top online stores for ${nicheLabel} right now?`,
-  ];
-}
-
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const shopDomain = session.shop;
@@ -162,6 +136,11 @@ export const loader = async ({ request }) => {
     currency: shopData?.currencyCode || null,
   });
 
+  // One-time onboarding — completed merchants stay in the main app
+  if (shop.onboardingDone) {
+    return redirect("/app");
+  }
+
   return {
     shop,
     shopInfo: {
@@ -188,6 +167,59 @@ export const action = async ({ request }) => {
   const intent = String(formData.get("intent") || "");
 
   const existing = await ensureShop(shopDomain);
+
+  if (existing.onboardingDone) {
+    return redirect("/app");
+  }
+
+  if (intent === "generate_persona") {
+    const audience = String(formData.get("audience") || "").trim();
+    const purchasePurpose = String(
+      formData.get("purchasePurpose") || "",
+    ).trim();
+    const budget = String(formData.get("budget") || "").trim();
+    const storeName =
+      String(formData.get("storeName") || "").trim() ||
+      existing.storeName ||
+      shopDomain;
+
+    const result = await generateBuyerPersona({
+      storeName,
+      niche: existing.niche,
+      audience,
+      purchasePurpose,
+      budget,
+    });
+
+    return {
+      ok: true,
+      intent: "generate_persona",
+      persona: result.persona,
+      usedAi: result.usedAi,
+      step: 2,
+    };
+  }
+
+  if (intent === "generate_prompts") {
+    const storeName =
+      String(formData.get("storeName") || "").trim() ||
+      existing.storeName ||
+      shopDomain;
+    const result = await generateBuyingPrompts({
+      storeName,
+      niche: existing.niche,
+      audience: existing.audience,
+      persona: existing.persona,
+    });
+
+    return {
+      ok: true,
+      intent: "generate_prompts",
+      prompts: result.prompts,
+      usedAi: result.usedAi,
+      step: 3,
+    };
+  }
 
   if (intent === "save_step_1") {
     const contactName = String(formData.get("contactName") || "").trim();
@@ -238,9 +270,16 @@ export const action = async ({ request }) => {
       return { ok: false, errors, step: 2 };
     }
 
-    const primaryPrompt =
-      existing.primaryPrompt ||
-      buildPromptSuggestions(storeName, existing.niche)[0];
+    let primaryPrompt = existing.primaryPrompt;
+    if (!primaryPrompt) {
+      const generated = await generateBuyingPrompts({
+        storeName,
+        niche: existing.niche,
+        audience,
+        persona,
+      });
+      primaryPrompt = generated.prompts[0];
+    }
 
     await upsertShopProfile(shopDomain, {
       audience,
@@ -675,7 +714,10 @@ export default function Onboarding() {
   const { shop, shopInfo, themeEditorUrl, engines = [] } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
+  const aiFetcher = useFetcher();
   const shopify = useAppBridge();
+  const personaRequested = useRef(false);
+  const promptsRequested = useRef(false);
 
   const maxReached = shop.onboardingStep || 1;
   const [currentStep, setCurrentStep] = useState(
@@ -697,10 +739,17 @@ export default function Onboarding() {
   const [budget, setBudget] = useState(shop.budget || "Mixed buyers");
   const [persona, setPersona] = useState(shop.persona || "");
   const [personaEdited, setPersonaEdited] = useState(Boolean(shop.persona));
+  const [personaSource, setPersonaSource] = useState(
+    shop.persona ? "saved" : "pending",
+  );
   const [primaryPrompt, setPrimaryPrompt] = useState(
     shop.primaryPrompt ||
-      buildPromptSuggestions(shop.storeName || shopInfo.name, shop.niche)[0],
+      templatePromptSuggestions(shop.storeName || shopInfo.name, shop.niche)[0],
   );
+  const [promptSuggestions, setPromptSuggestions] = useState(() =>
+    templatePromptSuggestions(shop.storeName || shopInfo.name, shop.niche),
+  );
+  const [promptsSource, setPromptsSource] = useState("template");
   const [selectedEngines, setSelectedEngines] = useState(() =>
     engines.map((engine) => engine.id),
   );
@@ -708,26 +757,33 @@ export default function Onboarding() {
 
   const errors = actionData?.errors || {};
   const isSubmitting = navigation.state === "submitting";
+  const aiBusy = aiFetcher.state !== "idle";
 
-  const promptSuggestions = useMemo(
-    () =>
-      buildPromptSuggestions(storeName || shopInfo.name, niche || shop.niche),
-    [storeName, shopInfo.name, niche, shop.niche],
-  );
+  const requestPersona = () => {
+    const data = new FormData();
+    data.set("intent", "generate_persona");
+    data.set("audience", audience);
+    data.set("purchasePurpose", purchasePurpose);
+    data.set("budget", budget);
+    data.set("storeName", storeName || shopInfo.name || "");
+    aiFetcher.submit(data, { method: "post" });
+  };
 
-  const regeneratePersona = () => {
-    const next = buildPersona({
-      storeName: storeName || shopInfo.name,
-      audience,
-      purchasePurpose,
-      budget,
-    });
-    setPersona(next);
-    setPersonaEdited(false);
+  const requestPrompts = () => {
+    const data = new FormData();
+    data.set("intent", "generate_prompts");
+    data.set("storeName", storeName || shopInfo.name || "");
+    aiFetcher.submit(data, { method: "post" });
   };
 
   useEffect(() => {
     if (!actionData?.ok || !actionData.step) return;
+    if (
+      actionData.intent === "generate_persona" ||
+      actionData.intent === "generate_prompts"
+    ) {
+      return;
+    }
     setCurrentStep(actionData.step);
     if (actionData.scanQueued) {
       shopify.toast.show(
@@ -738,28 +794,77 @@ export default function Onboarding() {
     }
   }, [actionData, shopify]);
 
+  const lastAiStamp = useRef("");
   useEffect(() => {
-    if (currentStep === 2 && !persona) {
-      regeneratePersona();
+    if (aiFetcher.state !== "idle") return;
+    const data = aiFetcher.data;
+    if (!data?.ok || !data.intent) return;
+
+    const stamp = `${data.intent}:${data.persona || ""}:${(data.prompts || []).join("|")}`;
+    if (lastAiStamp.current === stamp) return;
+    lastAiStamp.current = stamp;
+
+    if (data.intent === "generate_persona" && data.persona) {
+      setPersona(data.persona);
+      setPersonaEdited(false);
+      setPersonaSource(data.usedAi ? "ai" : "template");
+      shopify.toast.show(
+        data.usedAi ? "Persona generated with AI." : "Persona draft ready.",
+      );
+    }
+
+    if (data.intent === "generate_prompts" && Array.isArray(data.prompts)) {
+      setPromptSuggestions(data.prompts);
+      setPrimaryPrompt((current) => current || data.prompts[0] || "");
+      setPromptsSource(data.usedAi ? "ai" : "template");
+      shopify.toast.show(
+        data.usedAi
+          ? "Buying questions generated with AI."
+          : "Quick starter questions ready.",
+      );
+    }
+  }, [aiFetcher.state, aiFetcher.data, shopify]);
+
+  useEffect(() => {
+    if (currentStep === 2 && !persona && !personaRequested.current) {
+      personaRequested.current = true;
+      requestPersona();
+    }
+    if (currentStep === 3 && !promptsRequested.current) {
+      promptsRequested.current = true;
+      requestPrompts();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep]);
 
+  const applyChoicePersonaPreview = (next) => {
+    if (personaEdited) return;
+    setPersona(
+      templatePersona({
+        storeName: storeName || shopInfo.name,
+        audience: next.audience ?? audience,
+        purchasePurpose: next.purchasePurpose ?? purchasePurpose,
+        budget: next.budget ?? budget,
+      }),
+    );
+    setPersonaSource("template");
+  };
+
   return (
-    <s-page heading="Citely setup">
+    <s-page heading="Welcome to Citely">
       <OnboardingStyles />
       <div className="co-wrap">
         <s-section>
           <div className="co-hero">
             <div className="co-hero__badge">
               <Sparkles size={16} strokeWidth={2} />
-              <span>AI Visibility Setup</span>
+              <span>One-time setup</span>
             </div>
 
             <p className="co-hero__text">
               Get to your first AI visibility check fast. Confirm the store,
-              define the buyer, pick the question Citely will track, then turn
-              on storefront injection.
+              define the buyer, pick the question Citely will track, then finish
+              setup. This only runs once for new installs.
             </p>
           </div>
 
@@ -805,7 +910,7 @@ export default function Onboarding() {
                 <ChoiceGroup
                   name="niche"
                   label="Primary niche"
-                  details="Citely is niche-first. This shapes prompts, compliance tone, and fix recommendations."
+                  details="Citely is niche-first. This shapes prompts, compliance tone, and content recommendations."
                   options={NICHES}
                   value={niche}
                   onChange={setNiche}
@@ -870,16 +975,7 @@ export default function Onboarding() {
                   value={audience}
                   onChange={(value) => {
                     setAudience(value);
-                    if (!personaEdited) {
-                      setPersona(
-                        buildPersona({
-                          storeName: storeName || shopInfo.name,
-                          audience: value,
-                          purchasePurpose,
-                          budget,
-                        }),
-                      );
-                    }
+                    applyChoicePersonaPreview({ audience: value });
                   }}
                   error={errors.audience}
                 />
@@ -892,16 +988,7 @@ export default function Onboarding() {
                   value={purchasePurpose}
                   onChange={(value) => {
                     setPurchasePurpose(value);
-                    if (!personaEdited) {
-                      setPersona(
-                        buildPersona({
-                          storeName: storeName || shopInfo.name,
-                          audience,
-                          purchasePurpose: value,
-                          budget,
-                        }),
-                      );
-                    }
+                    applyChoicePersonaPreview({ purchasePurpose: value });
                   }}
                   error={errors.purchasePurpose}
                 />
@@ -914,16 +1001,7 @@ export default function Onboarding() {
                   value={budget}
                   onChange={(value) => {
                     setBudget(value);
-                    if (!personaEdited) {
-                      setPersona(
-                        buildPersona({
-                          storeName: storeName || shopInfo.name,
-                          audience,
-                          purchasePurpose,
-                          budget: value,
-                        }),
-                      );
-                    }
+                    applyChoicePersonaPreview({ budget: value });
                   }}
                   error={errors.budget}
                 />
@@ -933,7 +1011,15 @@ export default function Onboarding() {
                     <span className="co-persona-card__title">
                       Buyer persona
                     </span>
-                    <span className="co-persona-card__badge">Generated</span>
+                    <span className="co-persona-card__badge">
+                      {aiBusy && aiFetcher.formData?.get("intent") === "generate_persona"
+                        ? "Generating…"
+                        : personaSource === "ai"
+                          ? "AI"
+                          : personaSource === "saved"
+                            ? "Saved"
+                            : "Draft"}
+                    </span>
                   </div>
                   <s-text-area
                     name="persona"
@@ -943,6 +1029,7 @@ export default function Onboarding() {
                     onChange={(event) => {
                       setPersona(event.currentTarget.value);
                       setPersonaEdited(true);
+                      setPersonaSource("edited");
                     }}
                     rows={5}
                     error={errors.persona}
@@ -951,7 +1038,8 @@ export default function Onboarding() {
                     <button
                       type="button"
                       className="co-btn co-btn--ghost"
-                      onClick={regeneratePersona}
+                      onClick={requestPersona}
+                      disabled={aiBusy}
                       style={{
                         padding: "8px 12px",
                         display: "inline-flex",
@@ -960,7 +1048,12 @@ export default function Onboarding() {
                       }}
                     >
                       <RefreshCw size={16} strokeWidth={2} />
-                      <span>Regenerate persona</span>
+                      <span>
+                        {aiBusy &&
+                        aiFetcher.formData?.get("intent") === "generate_persona"
+                          ? "Generating…"
+                          : "Regenerate with AI"}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -1025,10 +1118,35 @@ export default function Onboarding() {
                       display: "flex",
                       alignItems: "center",
                       gap: "6px",
+                      flexWrap: "wrap",
                     }}
                   >
                     <Zap size={16} strokeWidth={2} />
                     <span>Quick starters</span>
+                    <span style={{ color: "#6b7280", fontWeight: 500 }}>
+                      {aiBusy &&
+                      aiFetcher.formData?.get("intent") === "generate_prompts"
+                        ? "· Generating…"
+                        : promptsSource === "ai"
+                          ? "· AI"
+                          : "· Draft"}
+                    </span>
+                    <button
+                      type="button"
+                      className="co-btn co-btn--ghost"
+                      onClick={requestPrompts}
+                      disabled={aiBusy}
+                      style={{
+                        marginLeft: "auto",
+                        padding: "6px 10px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <RefreshCw size={14} strokeWidth={2} />
+                      <span>Refresh with AI</span>
+                    </button>
                   </div>
 
                   <s-stack gap="small-200">
@@ -1054,8 +1172,8 @@ export default function Onboarding() {
                   <Clock3 size={18} strokeWidth={2} />
                   <span>
                     Your first scan is queued after this step. Results improve
-                    as Citely collects more runs, then we suggest store and
-                    content fixes.
+                    as Citely collects more runs, then we suggest articles,
+                    blogs, and Reddit drafts to post yourself.
                   </span>
                 </div>
               </s-stack>
@@ -1081,7 +1199,7 @@ export default function Onboarding() {
             <SectionCard
               icon={Rocket}
               title="Turn Citely on for your storefront"
-              subtitle="Enable the Citely app embed so we can inject AI-readable product schema and help publish discovery files. This is what lets Check turn into Fix."
+              subtitle="Optional: enable the Citely app embed for AI-readable product schema on your storefront. You can skip this and finish — content drafts don’t require it."
             >
               <s-stack gap="large">
                 <div className="co-embed-card">
@@ -1127,9 +1245,9 @@ export default function Onboarding() {
                       margin: "0 0 12px 34px",
                     }}
                   >
-                    After you save in the theme editor, confirm here so Citely
-                    can start the fix loop. You can finish now and enable the
-                    embed later.
+                    After you save in the theme editor, confirm here. Or finish
+                    now and enable the embed later — you can still scan and
+                    generate content.
                   </p>
                   <div style={{ marginLeft: "34px" }}>
                     <label className="co-toggle">

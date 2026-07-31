@@ -101,7 +101,7 @@ export async function chatCompletion({
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": process.env.SHOPIFY_APP_URL || "https://citely.app",
+      "HTTP-Referer": process.env.SHOPIFY_APP_URL || "https://citely-fawn.vercel.app",
       "X-Title": "Citely",
     },
     body: JSON.stringify(body),

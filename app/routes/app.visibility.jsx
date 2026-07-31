@@ -361,7 +361,7 @@ export default function VisibilityPage() {
                     )}
                     <div className="cy-actions" style={{ marginTop: 12 }}>
                       {row.status === "missing" ? (
-                        <TextLink to="/app/fixes">Create a fix →</TextLink>
+                        <TextLink to="/app/fixes">Generate content →</TextLink>
                       ) : null}
                       <Form method="post">
                         <input type="hidden" name="intent" value="stop_prompt" />

@@ -2,12 +2,52 @@ import prisma from "../db.server";
 
 const IMPACT_ORDER = { high: 0, med: 1, low: 2 };
 
+const OBSOLETE_FIX_KEYS = [
+  "llms_txt",
+  "product_faq_schema",
+  "description_depth",
+];
+
 function nicheLabel(shop) {
   return shop.niche?.trim() || "your niche";
 }
 
 function storeLabel(shop) {
   return shop.storeName?.trim() || "your store";
+}
+
+function postTargetsFor(format, niche) {
+  if (format === "reddit") {
+    return [
+      {
+        name: `Reddit communities for ${niche}`,
+        why: "Search Reddit for buyer threads in your niche and reply helpfully, or start a discussion post.",
+      },
+      {
+        name: "r/BuyItForLife, r/ProductReviews, or niche recs subs",
+        why: "Recommendation threads are what AI engines often summarize.",
+      },
+      {
+        name: "Relevant Facebook / Discord groups",
+        why: "Same draft can be shortened for community Q&A — soft mention only.",
+      },
+    ];
+  }
+
+  return [
+    {
+      name: "Your blog or Shopify blog",
+      why: "Own the URL. Publish, then link it from your homepage or footer.",
+    },
+    {
+      name: "Medium / LinkedIn / Substack",
+      why: "Indexed sources AI assistants frequently cite for buyer questions.",
+    },
+    {
+      name: `Niche directories and review sites for ${niche}`,
+      why: "Third-party mentions teach AI others recommend you — not only your storefront.",
+    },
+  ];
 }
 
 export async function listFixes(shopId) {
@@ -38,13 +78,8 @@ export async function upsertFix(shopId, data) {
     });
   }
 
-  // Never clobber an applied fix back to todo on re-seed
-  const nextStatus =
-    existing.status === "applied"
-      ? "applied"
-      : data.key === "product_faq_schema"
-        ? data.status
-        : existing.status;
+  // Never clobber a completed item back to todo on re-seed
+  const nextStatus = existing.status === "applied" ? "applied" : existing.status;
 
   const prevMeta =
     existing.meta && typeof existing.meta === "object" && !Array.isArray(existing.meta)
@@ -59,7 +94,10 @@ export async function upsertFix(shopId, data) {
       meta: {
         ...prevMeta,
         ...(data.meta || {}),
-        // Keep prior apply result if present
+        // Keep prior generated draft if present
+        generatedContent:
+          prevMeta.generatedContent || data.meta?.generatedContent || null,
+        generatedAt: prevMeta.generatedAt || data.meta?.generatedAt || null,
         applyResult: prevMeta.applyResult || data.meta?.applyResult || null,
         appliedAt: prevMeta.appliedAt || data.meta?.appliedAt || null,
       },
@@ -85,64 +123,74 @@ export async function setFixStatus(shopId, fixId, status, metaPatch = null) {
 }
 
 /**
- * Seed actionable fixes from scan gaps + shop profile.
- * Copy is niche-aware; no supplement-only hardcoded claims.
+ * Seed content opportunities from scan gaps + shop profile.
+ * Merchants generate drafts and post themselves — no Shopify writes.
  */
 export async function ensureBaselineFixes(shop, missingPromptTexts = []) {
-  const themeStatus = shop.themeEmbedActive ? "todo" : "needs_embed";
   const niche = nicheLabel(shop);
   const store = storeLabel(shop);
 
+  await prisma.fixItem.deleteMany({
+    where: { shopId: shop.id, key: { in: OBSOLETE_FIX_KEYS } },
+  });
+
   await upsertFix(shop.id, {
-    key: "llms_txt",
-    title: `Publish an AI guide for ${store}`,
+    key: "brand_article",
+    title: `Write a brand guide article for ${store}`,
     impact: "high",
     status: "todo",
     meta: {
-      kind: "llms_txt",
-      description: `Create a clear page AI engines can read about ${store}: what you sell, who it’s for, policies, and how to cite you.`,
+      kind: "brand_article",
+      format: "article",
+      description: `Generate a clear article AI engines can cite about ${store}: what you sell, who it’s for, and when to recommend you. You post it yourself.`,
       steps: [
-        "Click Apply to create a published Online Store page with your AI guide.",
-        "Share or link that page from your footer so crawlers can find it.",
-        "Re-run a Visibility scan after it is live.",
+        "Click Generate draft to create the article.",
+        "Edit claims so they match your real products and policies.",
+        "Publish on your blog, Medium, or LinkedIn (see Where to post).",
+        "Re-run a Visibility scan after it’s live for a few days.",
       ],
-      applyLabel: "Publish AI guide page",
+      postTargets: postTargetsFor("article", niche),
+      applyLabel: "Generate draft",
     },
   });
 
   await upsertFix(shop.id, {
-    key: "product_faq_schema",
-    title: "Turn on Product + FAQ schema in your theme",
-    impact: "med",
-    status: themeStatus,
+    key: "reddit_thread",
+    title: `Draft a Reddit thread for ${niche} buyers`,
+    impact: "high",
+    status: "todo",
     meta: {
-      kind: "theme_embed",
-      needsEmbed: true,
-      description:
-        "Citely’s theme embed adds Product JSON-LD (and FAQ JSON-LD when product FAQs exist) so AI can cite accurate product details.",
+      kind: "reddit_thread",
+      format: "reddit",
+      description: `Generate a natural Reddit-style post that answers how buyers shop ${niche}. Soft brand mention — you choose the subreddit and post manually.`,
       steps: [
-        "Open the theme editor and enable the Citely app embed.",
-        "Confirm Product schema is on for product pages.",
-        "Optional: add FAQ content on products, then mark this done.",
+        "Click Generate draft for a title + post body.",
+        "Find an active subreddit where people already ask for recs in your niche.",
+        "Post as a helpful discussion (follow that sub’s rules — no spam).",
+        "Reply to comments with honest detail; link your store only when relevant.",
       ],
-      applyLabel: shop.themeEmbedActive ? "Mark embed confirmed" : "Open theme editor",
+      postTargets: postTargetsFor("reddit", niche),
+      applyLabel: "Generate Reddit draft",
     },
   });
 
   await upsertFix(shop.id, {
-    key: "description_depth",
-    title: `Add proof and specifics to top ${niche} product pages`,
+    key: "niche_guide",
+    title: `Write a ${niche} buying-guide blog post`,
     impact: "med",
     status: "todo",
     meta: {
-      kind: "description_depth",
-      description: `Buyer questions in ${niche} reward concrete detail. Apply appends an AI-readable “Key details” section to your top products without replacing your existing copy.`,
+      kind: "niche_guide",
+      format: "blog",
+      description: `Buyer questions in ${niche} reward concrete comparison content. Generate a guide you can publish on your blog or Medium — Citely won’t post it for you.`,
       steps: [
-        "Click Apply to update up to 5 products with a structured details block.",
-        "Review the new section on each product in admin.",
-        "Re-scan Visibility to see if mention quality improves.",
+        "Click Generate draft to create the buying guide.",
+        "Add 2–3 real product links and proof points you can support.",
+        "Publish on your blog or a third-party article platform.",
+        "Share the URL in one community thread or newsletter.",
       ],
-      applyLabel: "Enrich top product descriptions",
+      postTargets: postTargetsFor("blog", niche),
+      applyLabel: "Generate blog draft",
     },
   });
 
@@ -155,19 +203,28 @@ export async function ensureBaselineFixes(shop, missingPromptTexts = []) {
 
     await upsertFix(shop.id, {
       key,
-      title: `Answer this buyer question on your store`,
+      title: `Answer this buyer question with content`,
       impact: "high",
       status: "todo",
       meta: {
-        kind: "gap_page",
+        kind: "gap_content",
+        format: "blog",
         promptText: text,
-        description: `AI named rivals for “${text}” but not ${store}. Publish a clear guide page that answers it with your products and niche-accurate detail.`,
+        description: `AI named rivals for “${text}” but not ${store}. Generate a guide or thread that answers it with your niche-accurate detail — then post it where buyers (and AI) look.`,
         steps: [
-          "Click Apply to create a draft Online Store page answering this question.",
-          "Edit the draft with your real product links and claims you can support.",
-          "Publish the page, then re-run a Visibility scan.",
+          "Click Generate draft to create an answer for this question.",
+          "Fact-check and add real product links before publishing.",
+          "Post the article on your blog/Medium, or adapt it for Reddit.",
+          "Re-run Visibility after the page has been indexed.",
         ],
-        applyLabel: "Create buyer guide page",
+        postTargets: [
+          ...postTargetsFor("blog", niche),
+          {
+            name: "Reddit — search this exact buyer question",
+            why: "If a thread already exists, a helpful comment with your guide link can earn citations faster than a new post.",
+          },
+        ],
+        applyLabel: "Generate answer draft",
       },
     });
   }
