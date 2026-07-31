@@ -27,7 +27,7 @@ export default function App() {
           <s-link href="/app/visibility">Visibility</s-link>
           <s-link href="/app/competitors">Competitors</s-link>
           <s-link href="/app/revenue">Revenue</s-link>
-          <s-link href="/app/fixes">Content</s-link>
+          <s-link href="/app/fixes">Fixes</s-link>
         </s-app-nav>
       ) : null}
       <Outlet />

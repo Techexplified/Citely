@@ -13,7 +13,6 @@ import {
   Card,
   CyPage,
   FilterPills,
-  InfoNote,
   Metric,
   MetricRow,
   PageHeader,
@@ -71,7 +70,7 @@ export const action = async ({ request }) => {
 
   if (intent === "generate_content") {
     const fix = await getFixById(shop.id, fixId);
-    if (!fix) return { ok: false, error: "Content item not found." };
+    if (!fix) return { ok: false, error: "Fix not found." };
 
     try {
       const generated = await generateFixContent(shop, fix);
@@ -85,7 +84,6 @@ export const action = async ({ request }) => {
       await setFixStatus(shop.id, fixId, "applied", {
         generatedAt: generated.result?.generatedAt || new Date().toISOString(),
         generatedContent: generated.result || null,
-        // Keep legacy field name so older UI bits don't break
         applyResult: generated.result || null,
         appliedAt: new Date().toISOString(),
       });
@@ -106,7 +104,7 @@ export const action = async ({ request }) => {
 
   if (intent === "undo_fix") {
     const fix = await getFixById(shop.id, fixId);
-    if (!fix) return { ok: false, error: "Content item not found." };
+    if (!fix) return { ok: false, error: "Fix not found." };
     await setFixStatus(shop.id, fixId, "todo", {
       generatedContent: null,
       generatedAt: null,
@@ -131,6 +129,13 @@ function formatLabel(format) {
   return "Draft";
 }
 
+function getDraft(fix, actionData) {
+  return (
+    fix.meta?.generatedContent ||
+    (actionData?.fixId === fix.id ? actionData.generated : null)
+  );
+}
+
 export default function FixesPage() {
   const data = useLoaderData();
   const actionData = useActionData();
@@ -144,7 +149,7 @@ export default function FixesPage() {
     if (actionData.ok && actionData.message) shopify.toast.show(actionData.message);
     else if (actionData.error) shopify.toast.show(actionData.error);
     if (actionData.ok && actionData.fixId) {
-      setFilter("applied");
+      setFilter("all");
       setExpandedId(actionData.fixId);
     }
   }, [actionData, shopify]);
@@ -160,6 +165,13 @@ export default function FixesPage() {
     return fixes;
   }, [data.fixes, filter]);
 
+  const generatedFixes = useMemo(() => {
+    return (data.fixes || []).filter((fix) => {
+      const draft = getDraft(fix, actionData);
+      return fix.status === "applied" && draft?.body;
+    });
+  }, [data.fixes, actionData]);
+
   if (!data.onboardingDone) {
     return <Navigate to="/app/onboarding" replace />;
   }
@@ -167,9 +179,6 @@ export default function FixesPage() {
   const fixes = data.fixes || [];
   const todoCount = fixes.filter((fix) => fix.status !== "applied").length;
   const appliedCount = fixes.filter((fix) => fix.status === "applied").length;
-  const highCount = fixes.filter(
-    (fix) => fix.impact === "high" && fix.status !== "applied",
-  ).length;
 
   const submittingFixId =
     navigation.state === "submitting"
@@ -188,8 +197,8 @@ export default function FixesPage() {
   return (
     <CyPage>
       <PageHeader
-        title="Content"
-        subtitle="Generate articles, blogs, and Reddit threads that improve AI visibility. You post them yourself — Citely doesn’t publish for you."
+        title="Fixes"
+        subtitle="Generate articles, blogs, and Reddit drafts that improve AI visibility — then follow the guide on where to publish them."
         actions={
           <FilterPills
             value={filter}
@@ -219,59 +228,85 @@ export default function FixesPage() {
         </Card>
       </MetricRow>
 
-      <InfoNote>
-        Generate a draft, edit it so claims are accurate, then post where we
-        suggest (blog, Medium, Reddit, niche directories). Re-scan Visibility after
-        content is live.
-      </InfoNote>
+      <section className="cy-section">
+        <div className="cy-section__head">
+          <h2 className="cy-section__title">Generate content</h2>
+          <p className="cy-section__subtitle">
+            Create the draft first. Edit claims so they match your products,
+            then use the publishing guide below.
+          </p>
+        </div>
 
-      <div className="cy-list">
-        {filtered.length ? (
-          filtered.map((fix) => {
-            const open = expandedId === fix.id;
-            const generating = submittingFixId === fix.id;
-            const steps = Array.isArray(fix.meta?.steps) ? fix.meta.steps : [];
-            const applyLabel = fix.meta?.applyLabel || "Generate draft";
-            const draft =
-              fix.meta?.generatedContent ||
-              (actionData?.fixId === fix.id ? actionData.generated : null);
-            const postTargets = Array.isArray(
-              draft?.postTargets || fix.meta?.postTargets,
-            )
-              ? draft?.postTargets || fix.meta.postTargets
-              : [];
-            const format = draft?.format || fix.meta?.format || "article";
+        <div className="cy-list">
+          {filtered.length ? (
+            filtered.map((fix) => {
+              const open = expandedId === fix.id;
+              const generating = submittingFixId === fix.id;
+              const applyLabel = fix.meta?.applyLabel || "Generate draft";
+              const draft = getDraft(fix, actionData);
+              const format = draft?.format || fix.meta?.format || "article";
 
-            return (
-              <div className="cy-row cy-fix-card" key={fix.id}>
-                <div className="cy-fix-card__top">
-                  <div>
-                    <div className="cy-badge-row">
-                      <StatusPill>{fix.impact}</StatusPill>
-                      <StatusPill
-                        tone={fix.status === "applied" ? "ok" : "neutral"}
-                      >
-                        {statusLabel(fix.status)}
-                      </StatusPill>
-                      <StatusPill>{formatLabel(format)}</StatusPill>
+              return (
+                <div className="cy-row cy-fix-card" key={fix.id}>
+                  <div className="cy-fix-card__top">
+                    <div>
+                      <div className="cy-badge-row">
+                        <StatusPill>{fix.impact}</StatusPill>
+                        <StatusPill
+                          tone={fix.status === "applied" ? "ok" : "neutral"}
+                        >
+                          {statusLabel(fix.status)}
+                        </StatusPill>
+                        <StatusPill>{formatLabel(format)}</StatusPill>
+                      </div>
+                      <p className="cy-row__title" style={{ marginTop: 10 }}>
+                        {fix.title}
+                      </p>
+                      <div className="cy-metric__hint" style={{ marginTop: 6 }}>
+                        {fix.meta?.description ||
+                          "Generate content that helps AI discover your brand."}
+                      </div>
+                      {fix.meta?.promptText ? (
+                        <div className="cy-metric__hint" style={{ marginTop: 6 }}>
+                          Buyer question: {fix.meta.promptText}
+                        </div>
+                      ) : null}
                     </div>
-                    <p className="cy-row__title" style={{ marginTop: 10 }}>
-                      {fix.title}
-                    </p>
-                    <div className="cy-metric__hint" style={{ marginTop: 6 }}>
-                      {fix.meta?.description ||
-                        "Generate content that helps AI discover your brand."}
-                    </div>
-                  </div>
-                  <div className="cy-actions">
-                    <Button
-                      variant="quiet"
-                      onClick={() => setExpandedId(open ? null : fix.id)}
-                    >
-                      {open ? "Hide details" : "What to do"}
-                    </Button>
-                    {fix.status === "applied" ? (
-                      <>
+                    <div className="cy-actions">
+                      {draft?.body ? (
+                        <Button
+                          variant="quiet"
+                          onClick={() => setExpandedId(open ? null : fix.id)}
+                        >
+                          {open ? "Hide draft" : "View draft"}
+                        </Button>
+                      ) : null}
+                      {fix.status === "applied" ? (
+                        <>
+                          <Form method="post">
+                            <input
+                              type="hidden"
+                              name="intent"
+                              value="generate_content"
+                            />
+                            <input type="hidden" name="fixId" value={fix.id} />
+                            <Button
+                              type="submit"
+                              variant="ghost"
+                              disabled={generating}
+                            >
+                              {generating ? "Generating…" : "Regenerate"}
+                            </Button>
+                          </Form>
+                          <Form method="post">
+                            <input type="hidden" name="intent" value="undo_fix" />
+                            <input type="hidden" name="fixId" value={fix.id} />
+                            <Button type="submit" variant="ghost">
+                              Undo
+                            </Button>
+                          </Form>
+                        </>
+                      ) : (
                         <Form method="post">
                           <input
                             type="hidden"
@@ -279,124 +314,170 @@ export default function FixesPage() {
                             value="generate_content"
                           />
                           <input type="hidden" name="fixId" value={fix.id} />
-                          <Button type="submit" variant="ghost" disabled={generating}>
-                            {generating ? "Generating…" : "Regenerate"}
+                          <Button type="submit" disabled={generating}>
+                            {generating ? "Generating…" : applyLabel}
                           </Button>
                         </Form>
-                        <Form method="post">
-                          <input type="hidden" name="intent" value="undo_fix" />
-                          <input type="hidden" name="fixId" value={fix.id} />
-                          <Button type="submit" variant="ghost">
-                            Undo
-                          </Button>
-                        </Form>
-                      </>
-                    ) : (
-                      <Form method="post">
-                        <input
-                          type="hidden"
-                          name="intent"
-                          value="generate_content"
-                        />
-                        <input type="hidden" name="fixId" value={fix.id} />
-                        <Button type="submit" disabled={generating}>
-                          {generating ? "Generating…" : applyLabel}
-                        </Button>
-                      </Form>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
-                {open ? (
-                  <div className="cy-content-panel">
-                    {fix.meta?.promptText ? (
-                      <div className="cy-metric__hint">
-                        Linked buyer question: {fix.meta.promptText}
-                      </div>
-                    ) : null}
-
-                    {steps.length ? (
-                      <ol className="cy-steps">
-                        {steps.map((step) => (
-                          <li key={step}>{step}</li>
-                        ))}
-                      </ol>
-                    ) : null}
-
-                    {postTargets.length ? (
-                      <div className="cy-post-targets">
-                        <div className="cy-content-panel__label">
-                          Where to post
-                        </div>
-                        <ul>
-                          {postTargets.map((target) => (
-                            <li key={target.name}>
-                              <strong>{target.name}</strong>
-                              {target.why ? (
-                                <span className="cy-metric__hint">
-                                  {" "}
-                                  — {target.why}
-                                </span>
-                              ) : null}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-
-                    {draft?.body ? (
+                  {open && draft?.body ? (
+                    <div className="cy-content-panel">
                       <div className="cy-draft">
                         <div className="cy-draft__head">
                           <div>
-                            <div className="cy-content-panel__label">
-                              Your draft
-                            </div>
+                            <div className="cy-content-panel__label">Draft</div>
                             {draft.title ? (
                               <div className="cy-draft__title">{draft.title}</div>
                             ) : null}
                           </div>
-                          <div className="cy-actions">
-                            <Button
-                              variant="quiet"
-                              onClick={() =>
-                                copyText(
-                                  draft.title
-                                    ? `${draft.title}\n\n${draft.body}`
-                                    : draft.body,
-                                  "Draft copied",
-                                )
-                              }
-                            >
-                              Copy draft
-                            </Button>
-                          </div>
+                          <Button
+                            variant="quiet"
+                            onClick={() =>
+                              copyText(
+                                draft.title
+                                  ? `${draft.title}\n\n${draft.body}`
+                                  : draft.body,
+                                "Draft copied",
+                              )
+                            }
+                          >
+                            Copy draft
+                          </Button>
                         </div>
                         <pre className="cy-draft__body">{draft.body}</pre>
                       </div>
-                    ) : (
-                      <div className="cy-metric__hint">
-                        Generate a draft, then copy it and publish where
-                        suggested.
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })
-        ) : (
-          <div className="cy-empty">
-            No content items in this filter. Run a scan from Visibility to add
-            drafts for questions you’re missing.
-          </div>
-        )}
-      </div>
-
-      {highCount > 0 && filter === "todo" ? (
-        <div className="cy-metric__hint">
-          {highCount} high impact draft{highCount === 1 ? "" : "s"} left.
-          Generate each one, then post it yourself to improve AI visibility.
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })
+          ) : (
+            <div className="cy-empty">
+              No fixes in this filter. Run a scan from Visibility to add drafts
+              for questions you’re missing.
+            </div>
+          )}
         </div>
-      ) : null}
+      </section>
+
+      <section className="cy-section">
+        <div className="cy-section__head">
+          <h2 className="cy-section__title">What to do with that content</h2>
+          <p className="cy-section__subtitle">
+            Where to publish each draft so buyers — and AI engines — can find
+            you.
+          </p>
+        </div>
+
+        <div className="cy-list">
+          <div className="cy-row cy-fix-card">
+            <div className="cy-content-panel__label">Quick playbook</div>
+            <ol className="cy-steps" style={{ marginTop: 8 }}>
+              <li>
+                <strong>Articles & blogs</strong> — publish on your Shopify
+                blog, Medium, LinkedIn, or Substack. Link the URL from your
+                homepage or footer.
+              </li>
+              <li>
+                <strong>Reddit threads</strong> — post in niche recommendation
+                subs as a helpful discussion. Soft brand mention; follow each
+                sub’s rules.
+              </li>
+              <li>
+                <strong>Buyer-question answers</strong> — publish the guide,
+                then also search Reddit/forums for that exact question and share
+                a helpful reply with your link.
+              </li>
+              <li>
+                <strong>After it’s live</strong> — wait a few days, then re-run
+                Visibility to see if mention rate improves.
+              </li>
+            </ol>
+          </div>
+
+          {generatedFixes.length ? (
+            generatedFixes.map((fix) => {
+              const draft = getDraft(fix, actionData);
+              const postTargets = Array.isArray(
+                draft?.postTargets || fix.meta?.postTargets,
+              )
+                ? draft?.postTargets || fix.meta.postTargets
+                : [];
+              const format = draft?.format || fix.meta?.format || "article";
+
+              return (
+                <div className="cy-row cy-fix-card" key={`guide-${fix.id}`}>
+                  <div className="cy-badge-row">
+                    <StatusPill>{formatLabel(format)}</StatusPill>
+                    <StatusPill tone="ok">Ready</StatusPill>
+                  </div>
+                  <p className="cy-row__title" style={{ marginTop: 10 }}>
+                    {draft?.title || fix.title}
+                  </p>
+                  <div className="cy-metric__hint" style={{ marginTop: 6 }}>
+                    {fix.title}
+                  </div>
+
+                  {postTargets.length ? (
+                    <div className="cy-post-targets" style={{ marginTop: 12 }}>
+                      <div className="cy-content-panel__label">
+                        Where to publish
+                      </div>
+                      <ul>
+                        {postTargets.map((target) => (
+                          <li key={target.name}>
+                            <strong>{target.name}</strong>
+                            {target.why ? (
+                              <span className="cy-metric__hint">
+                                {" "}
+                                — {target.why}
+                              </span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {draft?.guide ? (
+                    <div className="cy-draft" style={{ marginTop: 12 }}>
+                      <div className="cy-draft__head">
+                        <div className="cy-content-panel__label">
+                          Publishing guide
+                        </div>
+                        <Button
+                          variant="quiet"
+                          onClick={() =>
+                            copyText(draft.guide, "Guide copied")
+                          }
+                        >
+                          Copy guide
+                        </Button>
+                      </div>
+                      <pre className="cy-draft__body">{draft.guide}</pre>
+                    </div>
+                  ) : (
+                    <ol className="cy-steps">
+                      {(Array.isArray(fix.meta?.steps)
+                        ? fix.meta.steps
+                        : []
+                      ).map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div className="cy-empty">
+              Generate a draft above — its publishing guide will show up here
+              with exact places to post.
+            </div>
+          )}
+        </div>
+      </section>
     </CyPage>
   );
 }

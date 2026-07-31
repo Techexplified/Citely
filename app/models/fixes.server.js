@@ -21,7 +21,7 @@ function postTargetsFor(format, niche) {
     return [
       {
         name: `Reddit communities for ${niche}`,
-        why: "Search Reddit for buyer threads in your niche and reply helpfully, or start a discussion post.",
+        why: "Search for buyer threads in your niche, or start a helpful discussion post.",
       },
       {
         name: "r/BuyItForLife, r/ProductReviews, or niche recs subs",
@@ -29,7 +29,7 @@ function postTargetsFor(format, niche) {
       },
       {
         name: "Relevant Facebook / Discord groups",
-        why: "Same draft can be shortened for community Q&A — soft mention only.",
+        why: "Shorten the same draft for community Q&A with a soft brand mention.",
       },
     ];
   }
@@ -37,7 +37,7 @@ function postTargetsFor(format, niche) {
   return [
     {
       name: "Your blog or Shopify blog",
-      why: "Own the URL. Publish, then link it from your homepage or footer.",
+      why: "Publish on an owned URL, then link it from your homepage or footer.",
     },
     {
       name: "Medium / LinkedIn / Substack",
@@ -45,7 +45,7 @@ function postTargetsFor(format, niche) {
     },
     {
       name: `Niche directories and review sites for ${niche}`,
-      why: "Third-party mentions teach AI others recommend you — not only your storefront.",
+      why: "Third-party mentions help AI learn that others recommend you.",
     },
   ];
 }
@@ -94,7 +94,6 @@ export async function upsertFix(shopId, data) {
       meta: {
         ...prevMeta,
         ...(data.meta || {}),
-        // Keep prior generated draft if present
         generatedContent:
           prevMeta.generatedContent || data.meta?.generatedContent || null,
         generatedAt: prevMeta.generatedAt || data.meta?.generatedAt || null,
@@ -124,7 +123,6 @@ export async function setFixStatus(shopId, fixId, status, metaPatch = null) {
 
 /**
  * Seed content opportunities from scan gaps + shop profile.
- * Merchants generate drafts and post themselves — no Shopify writes.
  */
 export async function ensureBaselineFixes(shop, missingPromptTexts = []) {
   const niche = nicheLabel(shop);
@@ -142,11 +140,11 @@ export async function ensureBaselineFixes(shop, missingPromptTexts = []) {
     meta: {
       kind: "brand_article",
       format: "article",
-      description: `Generate a clear article AI engines can cite about ${store}: what you sell, who it’s for, and when to recommend you. You post it yourself.`,
+      description: `Generate a clear article AI engines can cite about ${store}: what you sell, who it’s for, and when to recommend you.`,
       steps: [
-        "Click Generate draft to create the article.",
+        "Generate the article draft.",
         "Edit claims so they match your real products and policies.",
-        "Publish on your blog, Medium, or LinkedIn (see Where to post).",
+        "Publish on your blog, Medium, or LinkedIn.",
         "Re-run a Visibility scan after it’s live for a few days.",
       ],
       postTargets: postTargetsFor("article", niche),
@@ -162,12 +160,12 @@ export async function ensureBaselineFixes(shop, missingPromptTexts = []) {
     meta: {
       kind: "reddit_thread",
       format: "reddit",
-      description: `Generate a natural Reddit-style post that answers how buyers shop ${niche}. Soft brand mention — you choose the subreddit and post manually.`,
+      description: `Generate a natural Reddit-style post that answers how buyers shop ${niche}, with a soft brand mention.`,
       steps: [
-        "Click Generate draft for a title + post body.",
+        "Generate a title + post body.",
         "Find an active subreddit where people already ask for recs in your niche.",
-        "Post as a helpful discussion (follow that sub’s rules — no spam).",
-        "Reply to comments with honest detail; link your store only when relevant.",
+        "Post as a helpful discussion and follow that sub’s rules.",
+        "Reply to comments with honest detail; link your store when relevant.",
       ],
       postTargets: postTargetsFor("reddit", niche),
       applyLabel: "Generate Reddit draft",
@@ -182,9 +180,9 @@ export async function ensureBaselineFixes(shop, missingPromptTexts = []) {
     meta: {
       kind: "niche_guide",
       format: "blog",
-      description: `Buyer questions in ${niche} reward concrete comparison content. Generate a guide you can publish on your blog or Medium — Citely won’t post it for you.`,
+      description: `Buyer questions in ${niche} reward concrete comparison content. Generate a guide for your blog or Medium.`,
       steps: [
-        "Click Generate draft to create the buying guide.",
+        "Generate the buying-guide draft.",
         "Add 2–3 real product links and proof points you can support.",
         "Publish on your blog or a third-party article platform.",
         "Share the URL in one community thread or newsletter.",
@@ -210,11 +208,11 @@ export async function ensureBaselineFixes(shop, missingPromptTexts = []) {
         kind: "gap_content",
         format: "blog",
         promptText: text,
-        description: `AI named rivals for “${text}” but not ${store}. Generate a guide or thread that answers it with your niche-accurate detail — then post it where buyers (and AI) look.`,
+        description: `AI named rivals for “${text}” but not ${store}. Generate a guide that answers it with niche-accurate detail.`,
         steps: [
-          "Click Generate draft to create an answer for this question.",
+          "Generate an answer draft for this question.",
           "Fact-check and add real product links before publishing.",
-          "Post the article on your blog/Medium, or adapt it for Reddit.",
+          "Publish on your blog or Medium, or adapt it for Reddit.",
           "Re-run Visibility after the page has been indexed.",
         ],
         postTargets: [

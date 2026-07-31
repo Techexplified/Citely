@@ -1,6 +1,6 @@
 /**
- * Generate off-store content drafts (articles, blogs, Reddit threads)
- * and posting guidance. Merchants copy/paste and publish themselves.
+ * Generate content drafts (articles, blogs, Reddit threads)
+ * plus a publishing guide for where to post them.
  */
 import {
   chatCompletion,
@@ -264,6 +264,48 @@ async function runLlm(messages) {
   return null;
 }
 
+function buildPublishingGuide(shop, fix, format, postTargets, draftTitle) {
+  const niche = nicheLabel(shop);
+  const name = storeLabel(shop);
+  const destinations = (postTargets || [])
+    .map((t, i) => `${i + 1}. ${t.name}${t.why ? ` — ${t.why}` : ""}`)
+    .join("\n");
+
+  if (format === "reddit") {
+    return [
+      `Publishing guide for: ${draftTitle || "your Reddit draft"}`,
+      "",
+      `Goal: help shoppers researching ${niche} discover ${name} in places AI reads.`,
+      "",
+      "Where to publish",
+      destinations || "1. Relevant Reddit communities for your niche",
+      "",
+      "How to use this draft",
+      "1. Edit the title so it matches the subreddit’s tone.",
+      "2. Remove anything that sounds like an ad; keep it helpful.",
+      "3. Post, then reply to comments with honest detail.",
+      "4. Link your store only when someone asks or it clearly helps.",
+      "5. Re-run a Visibility scan after a few days.",
+    ].join("\n");
+  }
+
+  return [
+    `Publishing guide for: ${draftTitle || "your article"}`,
+    "",
+    `Goal: give AI engines a clear, citable page about ${name} in ${niche}.`,
+    "",
+    "Where to publish",
+    destinations || "1. Your blog or Medium",
+    "",
+    "How to use this draft",
+    "1. Fact-check claims and add 2–3 real product links.",
+    "2. Publish on one primary URL (blog or Medium).",
+    "3. Link that URL from your homepage, footer, or a related product page.",
+    "4. Optionally share the same piece on LinkedIn or a niche directory.",
+    "5. Re-run a Visibility scan after it’s been live a few days.",
+  ].join("\n");
+}
+
 /**
  * @returns {{ ok: boolean, message: string, result?: object, error?: string }}
  */
@@ -283,27 +325,41 @@ export async function generateFixContent(shop, fix) {
       : fallback;
 
     const usedAi = Boolean(llm?.content);
+    const guide = buildPublishingGuide(
+      shop,
+      fix,
+      format,
+      postTargets,
+      draft.title,
+    );
 
     return {
       ok: true,
       message: usedAi
-        ? "Draft ready — copy it and post where suggested."
-        : "Draft ready (template). Add your API key for AI-written drafts, then customize before posting.",
+        ? "Draft and publishing guide ready."
+        : "Draft and publishing guide ready (template).",
       result: {
         ...draft,
+        guide,
         postTargets,
         generatedAt: new Date().toISOString(),
         usedAi,
       },
     };
   } catch (error) {
-    // Still deliver a usable template so the merchant isn't blocked
+    const guide = buildPublishingGuide(
+      shop,
+      fix,
+      format,
+      postTargets,
+      fallback.title,
+    );
     return {
       ok: true,
-      message:
-        "AI draft failed, so we filled a solid template. Edit it, then post where suggested.",
+      message: "Draft and publishing guide ready (template).",
       result: {
         ...fallback,
+        guide,
         postTargets,
         generatedAt: new Date().toISOString(),
         usedAi: false,

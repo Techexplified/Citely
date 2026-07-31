@@ -299,7 +299,7 @@ export default function CompetitorsPage() {
                         Winner signal: {rival}
                       </div>
                     </div>
-                    <TextLink to="/app/fixes">Generate content →</TextLink>
+                    <TextLink to="/app/fixes">Open fix →</TextLink>
                   </div>
                 </div>
               );

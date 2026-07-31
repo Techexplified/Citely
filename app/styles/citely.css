@@ -810,6 +810,33 @@
   }
 }
 
+.cy-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cy-section__head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cy-section__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--cy-ink);
+  letter-spacing: -0.01em;
+}
+
+.cy-section__subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--cy-muted);
+}
+
 .cy-fix-card {
   display: flex;
   flex-direction: column;
