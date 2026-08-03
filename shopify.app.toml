@@ -44,6 +44,12 @@ api_version = "2026-07"
   uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
 
+  # Mandatory App Store privacy webhooks (GDPR/CPRA)
+  # https://shopify.dev/docs/apps/build/compliance/privacy-law-compliance
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "/webhooks/compliance"
+
 [auth]
 redirect_urls = [ "https://citely-fawn.vercel.app/auth/callback" ]
 

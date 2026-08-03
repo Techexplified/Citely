@@ -53,3 +53,62 @@ export async function ensurePrimaryPrompt(shop) {
     },
   });
 }
+
+/** Delete all app data for a shop (shop/redact). Cascades related rows. */
+export async function deleteShopData(shopDomain) {
+  if (!shopDomain) return { shop: 0, sessions: 0 };
+
+  const [shopResult, sessionsResult] = await prisma.$transaction([
+    prisma.shop.deleteMany({ where: { shopDomain } }),
+    prisma.session.deleteMany({ where: { shop: shopDomain } }),
+  ]);
+
+  return { shop: shopResult.count, sessions: sessionsResult.count };
+}
+
+/**
+ * Remove stored order attribution rows for a customer redaction request.
+ * Citely does not store customer PII; AiOrder rows are keyed by Shopify order id.
+ */
+export async function redactCustomerOrderData(shopDomain, orderIds = []) {
+  if (!shopDomain) return { deleted: 0 };
+
+  const shop = await getShopByDomain(shopDomain);
+  if (!shop) return { deleted: 0 };
+
+  const ids = (Array.isArray(orderIds) ? orderIds : [])
+    .map((id) => String(id))
+    .filter(Boolean);
+
+  if (ids.length === 0) return { deleted: 0 };
+
+  const result = await prisma.aiOrder.deleteMany({
+    where: {
+      shopId: shop.id,
+      orderId: { in: ids },
+    },
+  });
+
+  return { deleted: result.count };
+}
+
+/** Collect any stored order attribution data for a customers/data_request. */
+export async function getCustomerOrderData(shopDomain, orderIds = []) {
+  if (!shopDomain) return [];
+
+  const shop = await getShopByDomain(shopDomain);
+  if (!shop) return [];
+
+  const ids = (Array.isArray(orderIds) ? orderIds : [])
+    .map((id) => String(id))
+    .filter(Boolean);
+
+  if (ids.length === 0) return [];
+
+  return prisma.aiOrder.findMany({
+    where: {
+      shopId: shop.id,
+      orderId: { in: ids },
+    },
+  });
+}
