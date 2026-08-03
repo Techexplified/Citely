@@ -2,7 +2,7 @@
 
 client_id = "7626ea812d767cccda0852c3c80a07bb"
 name = "Citely"
-application_url = "https://citely-fawn.vercel.app"
+application_url = "https://citely-fawn.vercel.app/app"
 embedded = true
 
 [access_scopes]
@@ -34,7 +34,7 @@ name = "Description"
 type = "multi_line_text_field"
 
 [webhooks]
-api_version = "2026-10"
+api_version = "2026-07"
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/app/uninstalled"
@@ -45,7 +45,7 @@ api_version = "2026-10"
   topics = [ "app/scopes_update" ]
 
 [auth]
-redirect_urls = [ "https://citely-fawn.vercel.app/auth/callback", "https://citely-fawn.vercel.app/api/auth" ]
+redirect_urls = [ "https://citely-fawn.vercel.app/auth/callback" ]
 
 [build]
 automatically_update_urls_on_dev = true
