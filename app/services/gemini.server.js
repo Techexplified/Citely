@@ -5,9 +5,9 @@ export function isGeminiConfigured() {
   return Boolean(process.env.GEMINI_API_KEY?.trim());
 }
 
-/** Lowest-token Flash model that works with this API key + Google Search. */
+/** Cheap Flash-Lite default — enough for content / research (+ Google Search). */
 export function getGeminiModel() {
-  return process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash";
+  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
 }
 
 function extractGroundingSources(payload) {

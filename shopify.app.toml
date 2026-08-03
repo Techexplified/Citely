@@ -36,19 +36,21 @@ type = "multi_line_text_field"
 [webhooks]
 api_version = "2026-07"
 
+  # Use absolute URLs — application_url ends in /app, so relative
+  # "/webhooks/..." would resolve to /app/webhooks/... (404).
   [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
+  uri = "https://citely-fawn.vercel.app/webhooks/app/uninstalled"
   topics = [ "app/uninstalled" ]
 
   [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
+  uri = "https://citely-fawn.vercel.app/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
 
   # Mandatory App Store privacy webhooks (GDPR/CPRA)
   # https://shopify.dev/docs/apps/build/compliance/privacy-law-compliance
   [[webhooks.subscriptions]]
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
-  uri = "/webhooks/compliance"
+  uri = "https://citely-fawn.vercel.app/webhooks/compliance"
 
 [auth]
 redirect_urls = [ "https://citely-fawn.vercel.app/auth/callback" ]

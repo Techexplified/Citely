@@ -4,6 +4,7 @@ import {
   getCustomerOrderData,
   redactCustomerOrderData,
 } from "../models/shop.server";
+import { handleWebhookAction } from "../utils/webhook.server";
 
 /**
  * Mandatory App Store compliance webhooks.
@@ -11,15 +12,13 @@ import {
  * @see https://shopify.dev/docs/apps/build/compliance/privacy-law-compliance
  */
 export const action = async ({ request }) => {
-  const { topic, shop, payload } = await authenticate.webhook(request);
+  return handleWebhookAction(async () => {
+    const { topic, shop, payload } = await authenticate.webhook(request);
 
-  console.log(`Received ${topic} webhook for ${shop}`);
+    console.log(`Received ${topic} webhook for ${shop}`);
 
-  try {
     switch (topic) {
       case "CUSTOMERS_DATA_REQUEST": {
-        // Provide stored data to the merchant on request. Citely only keeps
-        // AI order attribution (no customer email/phone in our DB).
         const orders = await getCustomerOrderData(
           shop,
           payload?.orders_requested,
@@ -62,10 +61,5 @@ export const action = async ({ request }) => {
         console.warn(`Unhandled compliance webhook topic: ${topic}`);
         break;
     }
-  } catch (error) {
-    // HMAC already verified — acknowledge so Partner Dashboard does not fail delivery.
-    console.error(`Failed to process ${topic} for ${shop}:`, error);
-  }
-
-  return new Response();
+  });
 };

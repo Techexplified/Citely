@@ -81,7 +81,7 @@ export function listEngineCatalog() {
       if (engine.provider === "gemini") {
         model = useDirectGemini
           ? engine.model || getGeminiModel()
-          : engine.model || "google/gemini-3.6-flash";
+          : engine.model || "google/gemini-2.5-flash-lite";
       }
 
       return {
@@ -151,7 +151,7 @@ export async function runEngineChat(
   const model =
     engine.model ||
     (engine.id === "Gemini"
-      ? "google/gemini-3.6-flash"
+      ? "google/gemini-2.5-flash-lite"
       : engine.id === "Perplexity"
         ? "perplexity/sonar"
         : OPENROUTER_CHATGPT_MODEL);
