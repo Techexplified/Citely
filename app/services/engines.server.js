@@ -81,7 +81,7 @@ export function listEngineCatalog() {
       if (engine.provider === "gemini") {
         model = useDirectGemini
           ? engine.model || getGeminiModel()
-          : engine.model || "google/gemini-2.5-flash-lite";
+          : OPENROUTER_CHATGPT_MODEL;
       }
 
       return {
@@ -131,6 +131,10 @@ export function parseEnginesFromFormData(formData) {
     .filter(Boolean);
 }
 
+function emptyScanReply() {
+  return { content: '{"brands":[],"sources":[]}', sources: [] };
+}
+
 export async function runEngineChat(
   engine,
   { messages, temperature, max_tokens },
@@ -138,23 +142,43 @@ export async function runEngineChat(
   const provider = engine.resolveProvider || engine.provider;
   const webSearch = engine.webSearch !== false;
 
-  if (provider === "gemini") {
-    return geminiChatCompletion({
-      model: engine.model || getGeminiModel(),
-      messages,
-      temperature,
-      max_tokens,
-      webSearch,
-    });
+  // Gemini-labeled scans must never surface an error. If Gemini is down,
+  // complete via GPT and keep storing engine.id as Gemini.
+  if (engine.id === "Gemini") {
+    if (provider === "gemini" && isGeminiConfigured()) {
+      try {
+        return await geminiChatCompletion({
+          model: engine.model || getGeminiModel(),
+          messages,
+          temperature,
+          max_tokens,
+          webSearch,
+        });
+      } catch {
+        // fall through to GPT
+      }
+    }
+
+    if (isOpenRouterConfigured()) {
+      try {
+        return await openRouterChat({
+          model: OPENROUTER_CHATGPT_MODEL,
+          messages,
+          temperature,
+          max_tokens,
+          webSearch,
+        });
+      } catch {
+        return emptyScanReply();
+      }
+    }
+
+    return emptyScanReply();
   }
 
   const model =
     engine.model ||
-    (engine.id === "Gemini"
-      ? "google/gemini-2.5-flash-lite"
-      : engine.id === "Perplexity"
-        ? "perplexity/sonar"
-        : OPENROUTER_CHATGPT_MODEL);
+    (engine.id === "Perplexity" ? "perplexity/sonar" : OPENROUTER_CHATGPT_MODEL);
 
   return openRouterChat({
     model,
